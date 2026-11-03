@@ -34,7 +34,7 @@
       <label class="f">Nama sekolah<input type="text" id="pNama" autocomplete="off"></label>
       <label class="f">NPSN<input type="text" id="pNpsn" inputmode="numeric" autocomplete="off"></label>
       <label class="f">Kab./Kota, Provinsi<input type="text" id="pWil" autocomplete="off"></label>
-      <label class="f">Koordinat sekolah (cadangan)<input type="text" id="pKoor" inputmode="decimal" placeholder="-2.486486, 115.135429" autocomplete="off"></label>
+      <label class="f">Koordinat sekolah (cadangan)<input type="text" id="pKoor" inputmode="decimal" placeholder="Ketuk untuk mengisi, mis. -2.4xxxx, 115.1xxxx" autocomplete="off"></label>
     </div>
     <div class="gps">
       <span class="dot" id="gpsDot"></span>
@@ -46,6 +46,7 @@
     <div class="fixbox" id="fixBox" hidden>
       <p id="fixText"></p>
       <button class="btn primary" id="fixBtn" type="button"></button>
+      <button class="btn" id="fixFill" type="button" hidden>Isi koordinat sekolah</button>
     </div>
     <p class="hint">Isian di atas, nama paket, sudut, tanggal, jam, dan koordinat tercetak di bagian bawah setiap foto.
       Bila GPS HP tidak akurat, aplikasi memakai <b>koordinat sekolah</b> (lintang, bujur dari Dapodik atau Google Maps) dan menandainya di cap foto.</p>

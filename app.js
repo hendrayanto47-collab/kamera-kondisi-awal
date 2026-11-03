@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.1.3 · 3 Nov 2026";
+const APP_VERSION = "1.1.4 · 3 Nov 2026";
 
 // ---------- Data dasar ----------
 const ANGLES = [
@@ -376,10 +376,16 @@ function renderFix() {
   if (!n) return;
   $("fixText").textContent = sk
     ? `${n} foto tersimpan tanpa koordinat. Cetak koordinat sekolah ke foto-foto itu? Tanggal & jam asli tidak berubah.`
-    : `${n} foto tersimpan tanpa koordinat. Isi "Koordinat sekolah" di atas, lalu cetak ulang capnya.`;
-  $("fixBtn").disabled = !sk;
+    : `${n} foto tersimpan tanpa koordinat. Kolom "Koordinat sekolah" masih kosong: isi dulu (lintang, bujur dari Dapodik atau Google Maps), lalu tombol cetak akan aktif.`;
+  $("fixBtn").hidden = !sk; $("fixBtn").disabled = !sk;
+  $("fixFill").hidden = !!sk;
   $("fixBtn").textContent = `Cetak koordinat sekolah ke ${n} foto`;
 }
+$("fixFill").addEventListener("click", () => {
+  $("pKoor").scrollIntoView({ block: "center" }); $("pKoor").focus();
+});
+// Tombol cetak langsung aktif begitu koordinat valid diketik (tanpa harus keluar dari kolom)
+$("pKoor").addEventListener("input", () => renderFix());
 $("fixBtn").addEventListener("click", async () => {
   const sk = schoolKoor(); if (!sk) return;
   const keys = noKoorKeys(); let ok = 0;
