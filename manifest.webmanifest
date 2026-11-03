@@ -1,0 +1,17 @@
+{
+  "name": "Kamera Foto Kondisi Awal",
+  "short_name": "Kamera RevitSD",
+  "description": "Foto kondisi awal 4 sudut per menu paket dengan cap identitas sekolah, waktu, dan GPS.",
+  "lang": "id",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef0ec",
+  "theme_color": "#1d2421",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

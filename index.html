@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Kamera Kondisi Awal</title>
+  <meta name="description" content="Ambil 4 foto wajib per menu paket dengan cap identitas sekolah, waktu, dan GPS untuk Laporan Pendahuluan Revitalisasi SD 2026.">
+  <meta name="theme-color" content="#1d2421">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Kamera RevitSD">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Revitalisasi SD 2026 · Tab 3 Laporan Pendahuluan</p>
+      <h1>Kamera Foto Kondisi Awal</h1>
+    </div>
+    <div>
+      <div class="tally"><b id="tCount">0</b> / <span id="tTotal">0</span> foto wajib</div>
+      <div class="meter"><i id="tBar"></i></div>
+    </div>
+  </header>
+
+  <button class="install" id="installBtn" type="button" hidden>Pasang aplikasi di HP</button>
+
+  <section class="panel" aria-labelledby="hProfil">
+    <h2 id="hProfil">Identitas di cap foto</h2>
+    <div class="fields">
+      <label class="f">Nama sekolah<input type="text" id="pNama" autocomplete="off"></label>
+      <label class="f">NPSN<input type="text" id="pNpsn" inputmode="numeric" autocomplete="off"></label>
+      <label class="f">Kab./Kota, Provinsi<input type="text" id="pWil" autocomplete="off"></label>
+    </div>
+    <div class="gps">
+      <span class="dot" id="gpsDot"></span>
+      <span id="gpsText">GPS belum aktif</span>
+      <button class="mini-btn" id="gpsBtn" type="button">Aktifkan GPS</button>
+    </div>
+    <p class="hint">Isian di atas, nama paket, sudut, tanggal, jam, dan koordinat GPS tercetak di bagian bawah setiap foto.</p>
+  </section>
+
+  <section class="panel" id="cloudPanel" aria-labelledby="hCloud" hidden>
+    <h2 id="hCloud">Kirim ke Supabase</h2>
+    <form id="loginForm" class="add">
+      <label class="f">Email<input type="email" id="sbEmail" autocomplete="username" required></label>
+      <label class="f">Kata sandi<input type="password" id="sbPass" autocomplete="current-password" required></label>
+      <button class="btn" id="sbLogin" type="submit">Masuk</button>
+    </form>
+    <div id="loggedIn" class="gps" hidden>
+      <span class="dot on"></span>
+      <span id="sbUser"></span>
+      <button class="mini-btn" id="sbSync" type="button">Kirim sekarang</button>
+      <button class="mini-btn" id="sbOut" type="button">Keluar</button>
+    </div>
+    <p class="hint" id="sbHint">Masuk sekali saja. Foto otomatis terkirim saat ada internet; tanpa sinyal, foto menunggu di antrean.</p>
+  </section>
+
+  <ul class="rules" aria-label="Ketentuan">
+    <li>4 foto wajib per menu paket</li>
+    <li>Kondisi sebelum pekerjaan dimulai (progres 0%)</li>
+    <li>Landscape dianjurkan</li>
+    <li>Foto dikecilkan otomatis ±1920 px</li>
+  </ul>
+  <label class="chk"><input type="checkbox" id="optGuide" checked> Tampilkan panduan posisi sebelum memotret</label>
+
+  <div id="list" class="list"></div>
+
+  <section class="panel" aria-labelledby="hAdd">
+    <h2 id="hAdd">Tambah menu paket</h2>
+    <div class="add">
+      <label class="f">Nama ruang / paket<input type="text" id="aNama" placeholder="mis. perpustakaan"></label>
+      <label class="f">Kelompok<select id="aGrup"></select></label>
+      <button class="btn" id="aBtn" type="button">Tambah</button>
+    </div>
+  </section>
+  <p class="ver">Versi <span id="ver"></span></p>
+</div>
+
+<div class="update" id="updBar" hidden>
+  <span>Versi baru aplikasi tersedia.</span>
+  <button class="btn primary" id="updBtn" type="button">Muat ulang</button>
+</div>
+
+<div class="sheet" id="guide" hidden role="dialog" aria-modal="true" aria-labelledby="gTitle">
+  <div class="card">
+    <p class="eyebrow" id="gEyebrow"></p>
+    <h2 id="gTitle"></h2>
+    <div class="gfig" id="gFig"></div>
+    <ul class="tips" id="gTips"></ul>
+    <div class="vbar">
+      <button class="btn primary" id="gGo" type="button">Buka kamera</button>
+      <button class="btn ghost" id="gCancel" type="button">Batal</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="review" hidden role="dialog" aria-modal="true" aria-labelledby="rTitle">
+  <div class="card">
+    <p class="eyebrow">Periksa sebelum disimpan</p>
+    <h2 id="rTitle"></h2>
+    <img id="rImg" alt="">
+    <ul class="checks" id="rChecks"></ul>
+    <div class="vbar">
+      <button class="btn primary" id="rSave" type="button">Simpan foto</button>
+      <button class="btn" id="rRetake" type="button">Ambil ulang</button>
+      <button class="btn ghost" id="rCancel" type="button">Batal</button>
+    </div>
+  </div>
+</div>
+
+<div class="dock"><div class="in">
+  <p id="dockMsg"></p>
+  <button class="btn primary" id="zipBtn" type="button" disabled>Unduh semua (.zip)</button>
+</div></div>
+
+<div class="viewer" id="viewer" hidden role="dialog" aria-label="Pratinjau foto">
+  <div>
+    <img id="vImg" alt="">
+    <div class="vbar">
+      <button class="btn primary" id="vSave" type="button">Unduh foto ini</button>
+      <button class="btn" id="vClose" type="button">Tutup</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="picker" accept="image/*" capture="environment" hidden>
+<div class="toast" id="toast" hidden></div>
+
+<script src="config.js"></script>
+<script src="supabase.js"></script>
+<script src="zip.js"></script>
+<script src="check.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
