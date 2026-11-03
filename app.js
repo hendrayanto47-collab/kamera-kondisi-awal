@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.1.1 · 3 Nov 2026";
+const APP_VERSION = "1.1.2 · 3 Nov 2026";
 
 // ---------- Data dasar ----------
 const ANGLES = [
@@ -107,7 +107,7 @@ function toast(m) {
 }
 
 // ---------- Identitas ----------
-const fmap = { pNama: "nama", pNpsn: "npsn", pWil: "wil" };
+const fmap = { pNama: "nama", pNpsn: "npsn", pWil: "wil", pKoor: "koor" };
 for (const [id, k] of Object.entries(fmap)) {
   $(id).value = profil[k] || "";
   $(id).addEventListener("input", e => { profil[k] = e.target.value; saveState(); });
@@ -116,28 +116,66 @@ $("aGrup").innerHTML = GROUPS.map(g => `<option>${g}</option>`).join("");
 
 // ---------- GPS ----------
 let fix = null, watchId = null;
+const GPS_OPT = { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 };
+const HELP_APPROX =
+  "HP hanya memberi lokasi perkiraan. Di Android: Pengaturan → Aplikasi → Chrome → Izin → Lokasi → aktifkan \"Gunakan lokasi akurat\". " +
+  "Nyalakan juga Lokasi dan \"Akurasi lokasi Google\" di pengaturan Lokasi HP, lalu ketuk Cari ulang di luar ruangan.";
+const HELP_DENIED =
+  "Izin lokasi ditolak. Ketuk ikon gembok/pengaturan di samping alamat situs → Izin → Lokasi → Izinkan, lalu ketuk Cari ulang.";
+
+function onFix(p) {
+  const nf = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), t: Date.now() };
+  // Simpan yang lebih akurat; lokasi lama yang akurat tetap dipakai sampai 5 menit
+  if (!fix || nf.acc <= fix.acc || Date.now() - fix.t > 300000) fix = nf;
+  else fix.t = Date.now();
+  renderGps();
+}
+function onGpsErr(err) {
+  if (err.code === 1) { setGps("err", "Izin lokasi ditolak."); showHelp(HELP_DENIED); }
+  else if (!fix) setGps("err", "GPS belum dapat sinyal. Coba di luar ruangan.");
+  $("gpsRetry").hidden = false;
+}
+function renderGps() {
+  if (!fix) return;
+  $("gpsBtn").hidden = true; $("gpsRetry").hidden = false;
+  if (fix.acc <= KKA.LIMIT.gpsAcc) {
+    setGps("on", `GPS ${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)} (±${fix.acc} m)`); showHelp("");
+  } else {
+    setGps("err", `Akurasi rendah ±${fix.acc} m${schoolKoor() ? " · foto memakai koordinat sekolah" : ""}`);
+    showHelp(fix.acc >= 500 ? HELP_APPROX : "Tunggu sebentar di area terbuka, jauh dari atap seng, sampai angkanya di bawah ±50 m.");
+  }
+}
+function showHelp(t) { $("gpsHelp").textContent = t; $("gpsHelp").hidden = !t; }
 function startGps() {
   if (!("geolocation" in navigator)) { setGps("err", "HP ini tidak mendukung GPS di browser"); return; }
-  if (!window.isSecureContext) { setGps("err", "GPS butuh alamat https:// (lihat README)"); return; }
-  if (watchId != null) return;
-  setGps("", "Mencari sinyal GPS…");
-  watchId = navigator.geolocation.watchPosition(
-    p => {
-      fix = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), t: Date.now() };
-      if (fix.acc > KKA.LIMIT.gpsAcc)
-        setGps("err", `Akurasi rendah ±${fix.acc} m. Nyalakan Lokasi "Akurasi tinggi", tunggu di luar ruangan…`);
-      else setGps("on", `${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)} (±${fix.acc} m)`);
-      $("gpsBtn").hidden = true;
-    },
-    err => {
-      setGps("err", err.code === 1 ? "Izin lokasi ditolak. Aktifkan di pengaturan browser." : "GPS belum dapat sinyal. Coba di area terbuka.");
-      watchId = null;
-    },
-    { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }
-  );
+  if (!window.isSecureContext) { setGps("err", "GPS butuh alamat https://"); return; }
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  setGps("", "Mencari sinyal GPS… (bisa 1–2 menit, sebaiknya di luar ruangan)");
+  watchId = navigator.geolocation.watchPosition(onFix, onGpsErr, GPS_OPT);
+}
+// Minta posisi segar (dipanggil saat kamera dibuka; HP mencari GPS selama operator memotret)
+function refreshGps() {
+  if (watchId == null || !("geolocation" in navigator)) return;
+  navigator.geolocation.getCurrentPosition(onFix, () => {}, GPS_OPT);
 }
 function setGps(cls, text) { $("gpsDot").className = "dot " + cls; $("gpsText").textContent = text; }
 $("gpsBtn").addEventListener("click", startGps);
+$("gpsRetry").addEventListener("click", () => { fix = null; startGps(); });
+
+/* Koordinat sekolah cadangan: terima "-2.486486, 115.135429", tautan Google Maps "@-2.48,115.13", dll. */
+function schoolKoor() {
+  const nums = ((profil.koor || "").match(/-?\d+\.\d+/g) || []).map(Number);
+  if (nums.length < 2) return null;
+  const [lat, lng] = nums;
+  if (lat < -11.5 || lat > 6.5 || lng < 94 || lng > 141.5) return null; // di luar Indonesia
+  return { lat, lng };
+}
+$("pKoor").addEventListener("change", () => {
+  const k = schoolKoor();
+  if (profil.koor && !k) toast("Format koordinat belum dikenali. Contoh: -2.486486, 115.135429");
+  else if (k) toast(`Koordinat sekolah tersimpan: ${k.lat.toFixed(6)}, ${k.lng.toFixed(6)}`);
+  renderGps();
+});
 if (navigator.permissions) {
   navigator.permissions.query({ name: "geolocation" }).then(s => { if (s.state === "granted") startGps(); }).catch(() => {});
 }
@@ -186,7 +224,7 @@ function render() {
 
 // ---------- Aksi pada daftar ----------
 let target = null;
-function openCamera(k) { target = k; $("picker").value = ""; $("picker").click(); }
+function openCamera(k) { target = k; refreshGps(); $("picker").value = ""; $("picker").click(); }
 
 // Panduan posisi
 let guideOn = true;
@@ -258,7 +296,18 @@ function takenTime(file) {
   const lm = file.lastModified;
   return lm && lm > Date.UTC(2020, 0, 1) && lm <= Date.now() + 6e4 ? lm : Date.now();
 }
-const currentGps = () => (fix && Date.now() - fix.t < 120000 ? fix : null);
+/* Lokasi untuk foto:
+   1) GPS HP bila akurat (≤ 50 m)            → src "gps"
+   2) koordinat sekolah bila diisi           → src "sekolah" (GPS HP dicatat di acc bila ada)
+   3) GPS HP yang kurang akurat              → src "gps" dengan ±akurasi apa adanya
+   Lokasi lebih tua dari 5 menit dianggap tidak ada. */
+function currentGps() {
+  const live = fix && Date.now() - fix.t < 300000 ? fix : null;
+  if (live && live.acc <= KKA.LIMIT.gpsAcc) return { ...live, src: "gps" };
+  const sk = schoolKoor();
+  if (sk) return { lat: sk.lat, lng: sk.lng, acc: null, phoneAcc: live ? live.acc : null, src: "sekolah" };
+  return live ? { ...live, src: "gps" } : null;
+}
 
 async function stamp(img, takenAt, gps, p, a) {
   const sc = Math.min(1, 1920 / Math.max(img.width, img.height));
@@ -274,7 +323,9 @@ async function stamp(img, takenAt, gps, p, a) {
   const tFs = Math.round(26 * u), bFs = Math.round(18 * u), lh = Math.round(bFs * 1.4);
   const when = new Date(takenAt);
   const tglPendek = when.toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
-  const gpsTxt = gps ? `GPS ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)} (±${gps.acc} m)` : "GPS tidak tersedia";
+  const gpsTxt = !gps ? "GPS tidak tersedia"
+    : gps.src === "sekolah" ? `Koord. sekolah ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`
+    : `GPS ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)} (±${gps.acc} m)`;
   const lines = [
     [profil.nama || "-", "NPSN " + (profil.npsn || "-"), profil.wil].filter(Boolean).join("  ·  "),
     `${tglPendek}  ${two(when.getHours())}:${two(when.getMinutes())} ${zoneLabel(when)}  ·  ${gpsTxt}`,

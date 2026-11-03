@@ -187,7 +187,9 @@
     if (age > LIMIT.oldPhoto) add(false, `Foto ini dibuat ${ago(age)} lalu (dari galeri), bukan baru dipotret.`);
 
     // 7. GPS
-    if (!gps) add(false, "GPS tidak aktif. Koordinat tidak tercetak di foto.");
+    if (!gps) add(false, "GPS tidak aktif dan koordinat sekolah belum diisi. Koordinat tidak tercetak di foto.");
+    else if (gps.src === "sekolah")
+      add(false, `GPS HP ${gps.phoneAcc ? "tidak akurat (±" + gps.phoneAcc + " m)" : "belum terkunci"}; dicetak koordinat sekolah.`);
     else if (gps.acc > LIMIT.gpsAcc) add(false, `Akurasi GPS rendah (±${gps.acc} m). Tunggu sebentar di area terbuka.`);
     else {
       const pts = others.filter(o => o.lat != null);
