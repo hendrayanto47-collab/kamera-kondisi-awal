@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.1.2 · 3 Nov 2026";
+const APP_VERSION = "1.1.3 · 3 Nov 2026";
 
 // ---------- Data dasar ----------
 const ANGLES = [
@@ -35,7 +35,7 @@ let profil = { ...DEFAULT_PROFIL };
    path    : lokasi file di bucket Supabase
    prevPath: file lama di Supabase yang perlu dihapus setelah foto diulang */
 const photos = new Map();
-const REC_FIELDS = ["blob", "t", "lat", "lng", "acc", "hash", "warn", "synced", "path", "prevPath"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "synced", "path", "prevPath"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -174,7 +174,7 @@ $("pKoor").addEventListener("change", () => {
   const k = schoolKoor();
   if (profil.koor && !k) toast("Format koordinat belum dikenali. Contoh: -2.486486, 115.135429");
   else if (k) toast(`Koordinat sekolah tersimpan: ${k.lat.toFixed(6)}, ${k.lng.toFixed(6)}`);
-  renderGps();
+  renderGps(); render();
 });
 if (navigator.permissions) {
   navigator.permissions.query({ name: "geolocation" }).then(s => { if (s.state === "granted") startGps(); }).catch(() => {});
@@ -212,7 +212,7 @@ function render() {
   const cnt = [...photos.keys()].filter(k => paket.some(p => k.startsWith(p.id + "|"))).length;
   $("tCount").textContent = cnt; $("tTotal").textContent = total;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
-  renderCloud();
+  renderCloud(); renderFix();
   $("zipBtn").disabled = cnt === 0;
   const kurang = paket.filter(p => ANGLES.some(a => !photos.has(p.id + "|" + a.k))).length;
   $("dockMsg").textContent = !profil.nama
@@ -309,12 +309,15 @@ function currentGps() {
   return live ? { ...live, src: "gps" } : null;
 }
 
-async function stamp(img, takenAt, gps, p, a) {
+/* opts.cover = true: gambar sumber sudah bercap (foto lama), jadi cap lama ditutup penuh dulu.
+   Selain itu, salinan foto TANPA cap ikut disimpan (orig) agar cap bisa dicetak ulang dengan bersih. */
+async function stamp(img, takenAt, gps, p, a, opts = {}) {
   const sc = Math.min(1, 1920 / Math.max(img.width, img.height));
   const W = Math.round(img.width * sc), H = Math.round(img.height * sc);
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const x = c.getContext("2d");
   x.drawImage(img, 0, 0, W, H);
+  const orig = opts.cover ? null : await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
 
   /* Cap ringkas: 3 baris, tinggi ±15% foto berapa pun rasionya (4:3, 16:9, 20:9, portrait).
      Ukuran huruf mengikuti sisi TERPENDEK foto agar foto lebar tidak tertutup. */
@@ -336,6 +339,7 @@ async function stamp(img, takenAt, gps, p, a) {
   const gr = x.createLinearGradient(0, top - 24 * u, 0, H);
   gr.addColorStop(0, "rgba(0,0,0,0)"); gr.addColorStop(0.25, "rgba(0,0,0,.62)"); gr.addColorStop(1, "rgba(0,0,0,.78)");
   x.fillStyle = gr; x.fillRect(0, top - 24 * u, W, bandH + 24 * u);
+  if (opts.cover) { x.fillStyle = "rgb(18,20,19)"; x.fillRect(0, top - 6 * u, W, bandH + 6 * u); }
   x.fillStyle = "#f2b705"; x.fillRect(0, top + pad * 0.6, Math.round(6 * u), bandH - pad * 1.2);
   x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 3 * u;
   // Baris 1: sudut — paket (kuning) + label program di kanan bila muat
@@ -358,8 +362,45 @@ async function stamp(img, takenAt, gps, p, a) {
   x.shadowBlur = 0;
 
   const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
-  return { blob, t: when.getTime(), lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, acc: gps ? gps.acc : null };
+  const res = { blob, t: when.getTime(), lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, acc: gps ? gps.acc : null };
+  if (orig) res.orig = orig;
+  return res;
 }
+
+// ---------- Cetak ulang cap untuk foto tanpa koordinat ----------
+const noKoorKeys = () => [...photos.entries()]
+  .filter(([k, ph]) => ph.lat == null && paket.some(q => k.startsWith(q.id + "|"))).map(([k]) => k);
+function renderFix() {
+  const n = noKoorKeys().length, sk = schoolKoor();
+  $("fixBox").hidden = n === 0;
+  if (!n) return;
+  $("fixText").textContent = sk
+    ? `${n} foto tersimpan tanpa koordinat. Cetak koordinat sekolah ke foto-foto itu? Tanggal & jam asli tidak berubah.`
+    : `${n} foto tersimpan tanpa koordinat. Isi "Koordinat sekolah" di atas, lalu cetak ulang capnya.`;
+  $("fixBtn").disabled = !sk;
+  $("fixBtn").textContent = `Cetak koordinat sekolah ke ${n} foto`;
+}
+$("fixBtn").addEventListener("click", async () => {
+  const sk = schoolKoor(); if (!sk) return;
+  const keys = noKoorKeys(); let ok = 0;
+  $("fixBtn").disabled = true;
+  for (const k of keys) {
+    const ph = photos.get(k);
+    const [pid, ak] = k.split("|");
+    const p = paket.find(q => q.id === pid), a = ANGLES.find(q => q.k === ak);
+    try {
+      const src = ph.orig || ph.blob;
+      const img = await createImageBitmap(src);
+      const res = await stamp(img, ph.t, { ...sk, acc: null, src: "sekolah" }, p, a, { cover: !ph.orig });
+      URL.revokeObjectURL(ph.url);
+      const warn = (ph.warn || []).filter(w => !/GPS|koordinat/i.test(w)).concat("GPS HP tidak tersedia saat memotret; dicetak koordinat sekolah.");
+      photos.set(k, { ...ph, blob: res.blob, lat: sk.lat, lng: sk.lng, acc: null, warn,
+        synced: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
+      persist(k); ok++;
+    } catch (e) {}
+  }
+  render(); toast(`${ok} foto diperbarui dengan koordinat sekolah.`); syncAll();
+});
 
 // ---------- Ambil → periksa → simpan ----------
 let pending = null; // {key, rec, url}

@@ -80,6 +80,8 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .viewer img{max-height:80vh;border-radius:6px}
 .vbar{display:flex;gap:10px;margin-top:12px;justify-content:center;flex-wrap:wrap}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
+.fixbox{margin-top:12px;border:1px solid var(--warn);border-radius:8px;padding:12px;display:grid;gap:10px}
+.fixbox p{margin:0;font-size:14px}
 .chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink);cursor:pointer}
 .chk input{width:18px;height:18px;accent-color:var(--accent)}
 .ver{font-family:var(--f-mono);font-size:12px;color:var(--muted);margin:0;text-align:center}
