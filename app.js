@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.2.0 · 8 Nov 2026";
+const APP_VERSION = "1.3.0 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -250,12 +250,51 @@ function render() {
 
 // ---------- Aksi pada daftar ----------
 let target = null;
-function openCamera(k) { target = k; refreshGps(); $("picker").value = ""; $("picker").click(); }
+/* Buka kamera: kamera langsung dengan arahan (bila didukung & diaktifkan), selain itu kamera bawaan HP */
+let liveOn = true;
+try { liveOn = localStorage.getItem("kka-live") !== "0"; } catch (e) {}
+let liveFailed = false; // kamera langsung gagal dibuka di sesi ini → pakai kamera bawaan
+function openPicker(k) { target = k; $("picker").value = ""; $("picker").click(); }
+function openCamera(k) {
+  target = k; refreshGps();
+  if (!liveOn || liveFailed || !window.KKACam || !KKACam.supported()) return openPicker(k);
+  const [pid, ak] = k.split("|");
+  const p = paket.find(q => q.id === pid), a = angleOf(ak);
+  const SUB = {
+    serongkanan: "Garis kuning putus-putus = posisi pojok depan kanan bangunan.",
+    serongkiri: "Garis kuning putus-putus = posisi pojok depan kiri bangunan.",
+    depan: "Seluruh bangunan dan atap masuk bingkai, lurus menghadap fasad.",
+    belakang: "Seluruh dinding belakang dan atap masuk bingkai.",
+    ruang: "Dari pojok ruangan, arahkan diagonal: lantai, dinding, plafon.",
+  };
+  KKACam.open({
+    title: `${a.l.toUpperCase()} — ${p.nama.toUpperCase()}`,
+    sub: SUB[a.k] || "",
+    corner: a.k === "serongkanan" || a.k === "serongkiri",
+    room: a.k === "ruang",
+    gps: () => {
+      const g = currentGps();
+      if (!g) return { ok: false, label: "GPS mati" };
+      if (g.src === "sekolah") return { ok: true, label: "Koord. sekolah" };
+      return { ok: g.acc <= KKA.LIMIT.gpsAcc, label: `GPS ±${g.acc} m` };
+    },
+    onShot: f => processFile(f, k, 0),
+    onFallback: msg => {
+      if (msg) { liveFailed = true; toast(msg + " Ketuk kotak foto lagi."); }
+      else openPicker(k);
+    },
+  });
+}
 
 // Panduan posisi
 let guideOn = true;
 try { guideOn = localStorage.getItem("kka-guide") !== "0"; } catch (e) {}
 $("optGuide").checked = guideOn;
+$("optLive").checked = liveOn;
+$("optLive").addEventListener("change", e => {
+  liveOn = e.target.checked; liveFailed = false;
+  try { localStorage.setItem("kka-live", liveOn ? "1" : "0"); } catch (e) {}
+});
 $("optGuide").addEventListener("change", e => {
   guideOn = e.target.checked;
   try { localStorage.setItem("kka-guide", guideOn ? "1" : "0"); } catch (e) {}
@@ -441,15 +480,26 @@ const labelOf = k => {
   const p = paket.find(q => q.id === pid), a = angleOf(ak);
   return p && a ? `${a.l} ${p.nama}` : k;
 };
-$("picker").addEventListener("change", async e => {
+$("picker").addEventListener("change", e => {
   const f = e.target.files && e.target.files[0];
-  if (!f || !target) return;
-  const key = target;
+  if (f && target) processFile(f, target, 0);
+});
+// Putar gambar searah jarum jam (derajat kelipatan 90)
+function rotated(img, deg) {
+  if (!deg) return img;
+  const c = document.createElement("canvas"), swap = deg % 180 !== 0;
+  c.width = swap ? img.height : img.width; c.height = swap ? img.width : img.height;
+  const x = c.getContext("2d");
+  x.translate(c.width / 2, c.height / 2); x.rotate(deg * Math.PI / 180);
+  x.drawImage(img, -img.width / 2, -img.height / 2);
+  return c;
+}
+async function processFile(f, key, turn) {
   const [pid, ak] = key.split("|");
   const p = paket.find(q => q.id === pid), a = angleOf(ak);
   try {
     toast("Memeriksa foto…");
-    const img = await loadImage(f);
+    const img = rotated(await loadImage(f), turn);
     const info = KKA.analyze(img);
     const takenAt = takenTime(f);
     const gps = currentGps();
@@ -461,11 +511,18 @@ $("picker").addEventListener("change", async e => {
     const res = await stamp(img, takenAt, gps, p, a);
     const warn = checks.filter(c => !c.ok).map(c => c.text);
     if (pending) URL.revokeObjectURL(pending.url);
-    pending = { key, rec: { ...res, hash: info.hash, warn }, url: URL.createObjectURL(res.blob) };
+    pending = { key, rec: { ...res, hash: info.hash, warn }, url: URL.createObjectURL(res.blob), raw: f, turn };
     showReview(p, a, checks);
   } catch (err) {
     toast("Foto tidak bisa dibaca. Coba ambil ulang atau pilih format JPG/PNG.");
   }
+}
+// Bila foto terlanjur menyamping, putar 90° lalu periksa ulang
+$("rRotate").addEventListener("click", () => {
+  if (!pending) return;
+  const { raw, key, turn } = pending;
+  URL.revokeObjectURL(pending.url); pending = null;
+  processFile(raw, key, ((turn || 0) + 90) % 360);
 });
 function showReview(p, a, checks) {
   const nWarn = checks.filter(c => !c.ok).length;

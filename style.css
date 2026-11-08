@@ -126,3 +126,41 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .update{position:fixed;left:0;right:0;top:0;z-index:40;background:var(--sky);color:#fff;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;
   padding-top:calc(10px + env(safe-area-inset-top,0px));padding-bottom:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---------- Kamera langsung ---------- */
+html.vf-open, html.vf-open body{overflow:hidden}
+.vf{position:fixed;inset:0;z-index:50;background:#000;color:#fff;--go:#2fbf68;--no:#f0a050}
+.vf video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.vf-guide{position:fixed;pointer-events:none}
+.vg-third{stroke:rgba(255,255,255,.35);stroke-width:1}
+.vg-corner{stroke:#f2b705;stroke-width:3;stroke-dasharray:10 8}
+.vf-line{position:fixed;left:50%;top:50%;width:min(56vw,56vh);height:0;border-top:2px solid rgba(255,255,255,.85);pointer-events:none;transition:border-color .15s}
+.vf-line.ref{border-top:2px dashed rgba(255,255,255,.45)}
+.vf[data-state="go"] .vf-line.hz{border-top-color:var(--go)}
+.vf-hint{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);
+  width:min(92vw,520px);background:rgba(0,0,0,.62);border-radius:12px;padding:10px 14px;display:grid;gap:4px;
+  border-left:6px solid var(--no);transition:border-color .15s}
+.vf[data-state="go"] .vf-hint{border-left-color:var(--go)}
+.vf[data-state="wait"] .vf-hint{border-left-color:#bbb}
+/* Saat HP dimiringkan, kotak arahan ikut berputar agar terbaca */
+.vf-hint[data-turn="90"]{left:auto;right:calc(8px + env(safe-area-inset-right,0px));top:50%;width:min(80vh,520px);transform:translate(calc(50% - 50px),-50%) rotate(90deg)}
+.vf-hint[data-turn="270"]{left:calc(8px + env(safe-area-inset-left,0px));top:50%;width:min(80vh,520px);transform:translate(calc(-50% + 50px),-50%) rotate(-90deg)}
+.vf-hint[data-turn="180"]{top:auto;bottom:calc(120px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) rotate(180deg)}
+.vf-hint b{font-family:var(--f-display);font-size:15px;letter-spacing:.02em}
+.vf-sub{font-size:12px;color:#d6dbd8}
+.vf-msg{font-size:17px;font-weight:700;line-height:1.3}
+.vf[data-state="go"] .vf-msg{color:#8ff0b4}
+.vf-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.vc{font-size:11px;font-weight:700;border-radius:99px;padding:2px 8px;background:rgba(255,255,255,.14);color:#ddd}
+.vc.ok{background:var(--go);color:#062b14}
+.vc.no{background:var(--no);color:#2a1500}
+.vc.soft{background:rgba(240,160,80,.35);color:#ffe2c4}
+.vc.ok::before{content:"✓ "}
+.vf-bar{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:space-around;
+  padding:14px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  background:linear-gradient(transparent,rgba(0,0,0,.6))}
+.vf-btn{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:10px;padding:10px 12px;font:600 13px var(--f-body);min-width:84px;line-height:1.2}
+.vf-shutter{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.25);cursor:pointer;transition:background .15s,border-color .15s,transform .1s}
+.vf-shutter:active{transform:scale(.94)}
+.vf[data-state="go"] .vf-shutter{border-color:var(--go);background:rgba(47,191,104,.55);box-shadow:0 0 0 6px rgba(47,191,104,.3)}
+.vf.flash::after{content:"";position:fixed;inset:0;background:#fff;opacity:.7;pointer-events:none}

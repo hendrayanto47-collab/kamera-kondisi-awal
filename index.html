@@ -75,6 +75,7 @@
     <li>Foto dikecilkan otomatis ±1920 px</li>
   </ul>
   <label class="chk"><input type="checkbox" id="optGuide" checked> Tampilkan panduan posisi sebelum memotret</label>
+  <label class="chk"><input type="checkbox" id="optLive" checked> Kamera dengan arahan langsung (landscape, lurus, stabil, cahaya)</label>
 
   <div id="list" class="list"></div>
 
@@ -116,6 +117,7 @@
     <div class="vbar">
       <button class="btn primary" id="rSave" type="button">Simpan foto</button>
       <button class="btn" id="rRetake" type="button">Ambil ulang</button>
+      <button class="btn ghost" id="rRotate" type="button">Putar 90°</button>
       <button class="btn ghost" id="rCancel" type="button">Batal</button>
     </div>
   </div>
@@ -135,6 +137,24 @@
     </div>
   </div>
 </div>
+
+<div class="vf" id="vf" hidden role="dialog" aria-modal="true" aria-label="Kamera">
+  <video id="vfVideo" playsinline muted autoplay></video>
+  <svg id="vfGuide" class="vf-guide" aria-hidden="true"></svg>
+  <i class="vf-line ref" id="vfLevelRef"></i>
+  <i class="vf-line hz" id="vfLevel"></i>
+  <div class="vf-hint" id="vfHint" data-turn="0" aria-live="polite">
+    <b id="vfTitle"></b>
+    <span class="vf-sub" id="vfSub"></span>
+    <span class="vf-msg" id="vfMsg"></span>
+    <span class="vf-chips" id="vfChips"></span>
+  </div>
+  <div class="vf-bar">
+    <button class="vf-btn" id="vfClose" type="button">Tutup</button>
+    <button class="vf-shutter" id="vfShutter" type="button" aria-label="Jepret"></button>
+    <button class="vf-btn" id="vfNative" type="button">Kamera<br>bawaan</button>
+  </div>
+</div>
 <input type="file" id="picker" accept="image/*" capture="environment" hidden>
 <div class="toast" id="toast" hidden></div>
 
@@ -142,6 +162,7 @@
 <script src="supabase.js"></script>
 <script src="zip.js"></script>
 <script src="check.js"></script>
+<script src="camera.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
