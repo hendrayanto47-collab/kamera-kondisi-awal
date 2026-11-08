@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.8.2 · 8 Nov 2026";
+const APP_VERSION = "1.8.3 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -679,12 +679,21 @@ $("vidList").addEventListener("click", e => {
 });
 
 // Rekam video di lokasi
+let vidAddrBusy = false;
 $("vidRec").addEventListener("click", () => {
   const title = $("vidTitle").value.trim() || `Keliling bangunan – ${stageName(0).toLowerCase()}`;
   if (!profil.nama) { toast("Isi nama sekolah dan NPSN dulu."); return; }
   refreshGps();
   KKAVid.openRecorder({
-    title, audio: vidAudio, idLine: idLine(), zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
+    title, audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
+    // Alamat: isian manual, atau alamat tersimpan dari lokasi; dicari di latar bila belum ada
+    address: g => {
+      if (profil.alamat && profil.alamat.trim()) return profil.alamat.trim();
+      if (!g || !window.KKAGeo) return profil.wil || "";
+      const c = KKAGeo.cached(g.lat, g.lng);
+      if (!c && navigator.onLine && !vidAddrBusy) { vidAddrBusy = true; KKAGeo.reverse(g.lat, g.lng).finally(() => (vidAddrBusy = false)); }
+      return c || profil.wil || "";
+    },
     onSaved: v => saveVideo({ ...v, title }),
     onError: m => toast(m),
     onUnsupported: () => { toast("Perekam di aplikasi tidak didukung HP ini. Memakai kamera video bawaan (tanpa cap)."); $("vidPicker").dataset.title = title; $("vidPicker").value = ""; $("vidPicker").click(); },

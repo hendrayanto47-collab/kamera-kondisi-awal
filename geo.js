@@ -121,5 +121,6 @@
     return drawn > 0;
   }
 
-  window.KKAGeo = { plusCode, shortCode, reverse, prefetch, drawMap, cellOf };
+  const cached = (lat, lng) => addrCache[cellOf(lat, lng)] || null;
+  window.KKAGeo = { plusCode, shortCode, reverse, prefetch, drawMap, cellOf, cached };
 })();
