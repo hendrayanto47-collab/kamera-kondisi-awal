@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.5.0 · 8 Nov 2026";
+const APP_VERSION = "1.6.0 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -23,7 +23,14 @@ const ALL_ANGLES = [...ANGLES, EXTRA, LEGACY];
    0%      → "paket|sudut"            (sama seperti versi lama, foto lama tetap terbaca)
    25–100% → "@50|paket|sudut"
    Kegiatan→ "#keg|<id>"               */
-const STAGES = [0, 25, 50, 75, 100];
+/* Tahap bisa diatur sendiri oleh operator (0% selalu ada). Disimpan di HP. */
+const DEFAULT_STAGES = [0, 25, 50, 75, 100];
+let STAGES = DEFAULT_STAGES.slice();
+try {
+  const st = JSON.parse(localStorage.getItem("kka-stages") || "null");
+  if (Array.isArray(st) && st.length) STAGES = [...new Set([0, ...st.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 100)])].sort((a, b) => a - b);
+} catch (e) {}
+function saveStages() { try { localStorage.setItem("kka-stages", JSON.stringify(STAGES)); } catch (e) {} }
 const KEY = (pid, ak, st) => (st ? `@${st}|${pid}|${ak}` : `${pid}|${ak}`);
 function parseKey(k) {
   if (k.startsWith("#keg|")) return { keg: true, id: k.slice(5), st: null };
@@ -231,6 +238,35 @@ if (navigator.permissions) {
   navigator.permissions.query({ name: "geolocation" }).then(s => { if (s.state === "granted") startGps(); }).catch(() => {});
 }
 
+// ---------- Pengaturan tahap ----------
+const stageCount = st => [...photos.keys()].filter(k => { const q = parseKey(k); return !q.keg && q.st === st; }).length;
+function renderStageEd() {
+  $("stgChips").innerHTML = STAGES.map(st => st === 0
+    ? `<span class="stg fixed">0% <small>tetap</small></span>`
+    : `<span class="stg">${st}%<button type="button" data-stdel="${st}" aria-label="Hapus tahap ${st}%">×</button></span>`).join("");
+}
+$("stgChips").addEventListener("click", e => {
+  const b = e.target.closest("[data-stdel]"); if (!b) return;
+  const st = +b.dataset.stdel, n = stageCount(st);
+  if (n) { toast(`Tahap ${st}% masih berisi ${n} foto. Hapus atau unduh fotonya dulu.`); return; }
+  if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "hapus?"; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = "×"; } }, 3000); return; }
+  STAGES = STAGES.filter(x => x !== st); saveStages();
+  if (view === st) view = 0;
+  renderStageEd(); render(); toast(`Tahap ${st}% dihapus.`);
+});
+$("stgAdd").addEventListener("click", () => {
+  const n = Math.round(Number(String($("stgNew").value).replace(",", ".")));
+  if (!Number.isFinite(n) || n < 1 || n > 100) { toast("Isi angka persen antara 1 dan 100."); $("stgNew").focus(); return; }
+  if (STAGES.includes(n)) { toast(`Tahap ${n}% sudah ada.`); return; }
+  STAGES = [...STAGES, n].sort((a, b) => a - b); saveStages();
+  $("stgNew").value = ""; renderStageEd(); render(); toast(`Tahap ${n}% ditambahkan.`);
+});
+$("stgReset").addEventListener("click", () => {
+  const keep = STAGES.filter(st => stageCount(st) > 0);
+  STAGES = [...new Set([...DEFAULT_STAGES, ...keep])].sort((a, b) => a - b); saveStages();
+  renderStageEd(); render(); toast("Tahap dikembalikan ke 0, 25, 50, 75, 100%.");
+});
+
 // ---------- Tampilan daftar ----------
 const inPaket = k => { const q = parseKey(k); return !q.keg && paket.some(p => p.id === q.pid); };
 const kegKeys = () => [...photos.keys()].filter(k => k.startsWith("#keg|")).sort((x, y) => photos.get(y).t - photos.get(x).t);
@@ -239,6 +275,8 @@ function stageKeys(st) { return [...photos.keys()].filter(k => { const q = parse
 function renderTabs() {
   const cnt = st => paket.reduce((s, p) => s + ANGLES.filter(a => photos.has(KEY(p.id, a.k, st))).length, 0);
   const total = paket.length * 4;
+  $("tabs").classList.toggle("scroll", STAGES.length > 6);
+  $("tabs").style.gridTemplateColumns = STAGES.length > 6 ? "" : `repeat(${STAGES.length},minmax(0,1fr)) minmax(0,1.4fr)`;
   $("tabs").innerHTML = STAGES.map(st => {
     const n = cnt(st);
     return `<button type="button" role="tab" data-view="${st}" aria-selected="${view === st}" class="tab${view === st ? " on" : ""}${n === total && total ? " full" : ""}">
@@ -425,7 +463,7 @@ $("list").addEventListener("click", e => {
     const id = d.dataset.del;
     if (d.dataset.armed) {
       paket = paket.filter(p => p.id !== id);
-      STAGES.forEach(st => ALL_ANGLES.forEach(a => { const k = KEY(id, a.k, st); photos.delete(k); dbPut(k, null); }));
+      [...photos.keys()].filter(k => { const q = parseKey(k); return !q.keg && q.pid === id; }).forEach(k => { photos.delete(k); dbPut(k, null); });
       // Catatan: foto yang sudah terkirim tetap ada di Supabase; hapus manual di dashboard bila perlu.
       saveState(); render();
     } else {
@@ -450,8 +488,7 @@ $("aBtn").addEventListener("click", () => {
 const fmtDur = s => `${Math.floor(s / 60)}:${two(Math.round(s % 60))}`;
 const idLine = () => [profil.nama || "-", "NPSN " + (profil.npsn || "-"), profil.wil].filter(Boolean).join("  ·  ");
 const vidName = (k) => { const v = videos.get(k); return `${tgl(v.t)} ${jam(v.t)} - Video - ${clean(v.title || "Dokumentasi")}.${v.ext || "mp4"}`; };
-$("vidTitleList").innerHTML = [...STAGES.map(st => `Keliling bangunan – ${stageName(st).toLowerCase()}`), "Kegiatan pekerjaan berlangsung", "Serah terima"]
-  .map(t => `<option value="${esc(t)}">`).join("");
+
 let vidAudio = true;
 try { vidAudio = localStorage.getItem("kka-vaudio") !== "0"; } catch (e) {}
 $("vidAudio").checked = vidAudio;
@@ -463,6 +500,8 @@ function saveVideo(v) {
   toast(`Video tersimpan (${fmtDur(v.dur || 0)}, ${(v.blob.size / 1048576).toFixed(1)} MB).`);
 }
 function renderVid() {
+  $("vidTitleList").innerHTML = [...STAGES.map(st => `Keliling bangunan – ${stageName(st).toLowerCase()}`), "Kegiatan pekerjaan berlangsung", "Serah terima"]
+    .map(t => `<option value="${esc(t)}">`).join("");
   const keys = [...videos.keys()].sort((a, b) => videos.get(b).t - videos.get(a).t);
   $("vidList").innerHTML = keys.map(k => {
     const v = videos.get(k);
@@ -945,5 +984,12 @@ $("updBtn").addEventListener("click", () => {
 });
 
 // ---------- Mulai ----------
-render(); renderCloud();
-openDb().then(async d => { idb = d; await dbLoad(); render(); renderCloud(); syncAll(); });
+renderStageEd(); render(); renderCloud();
+openDb().then(async d => {
+  idb = d; await dbLoad();
+  // Tahap yang masih punya foto tidak boleh hilang dari daftar
+  const used = [...photos.keys()].map(parseKey).filter(q => !q.keg).map(q => q.st);
+  const merged = [...new Set([...STAGES, ...used])].sort((a, b) => a - b);
+  if (merged.length !== STAGES.length) { STAGES = merged; saveStages(); }
+  renderStageEd(); render(); renderCloud(); syncAll();
+});

@@ -28,7 +28,7 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(26px,5vw,36px);l
 .panel h2{font-family:var(--f-display);font-size:15px;font-weight:700;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em}
 .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 label.f{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
-input[type=text],input[type=email],input[type=password],select{font:inherit;font-size:16px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;min-width:0}
+input[type=text],input[type=email],input[type=password],input[type=number],select{font:inherit;font-size:16px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;min-width:0}
 input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 .hint{font-size:13px;color:var(--muted);margin:10px 0 0}
 .gps{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums}
@@ -167,6 +167,8 @@ html.vf-open, html.vf-open body{overflow:hidden}
 
 /* ---------- Tahap & kegiatan ---------- */
 .tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) minmax(0,1.4fr);gap:5px}
+.tabs.scroll{display:flex;overflow-x:auto;scrollbar-width:thin;padding-bottom:4px}
+.tabs.scroll .tab{flex:0 0 auto;min-width:62px}
 .tab{min-width:0;display:grid;justify-items:center;gap:0;padding:8px 2px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;font:inherit}
 .tab b{font-family:var(--f-display);font-size:16px}
 .tab small{font-family:var(--f-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -214,3 +216,13 @@ h3.sub{font-family:var(--f-display);font-size:15px;margin:0}
 .mk-card p{margin:0;font-size:14px}
 
 .okc{color:var(--ok)!important;font-weight:700}
+
+.stgpanel summary{font-family:var(--f-display);font-weight:700;font-size:14px;cursor:pointer;text-transform:uppercase;letter-spacing:.04em}
+.stgpanel[open] summary{margin-bottom:12px}
+.stgpanel .add{margin-top:12px}
+.stgchips{display:flex;flex-wrap:wrap;gap:8px}
+.stg{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-mono);font-weight:700;font-size:14px;padding:5px 6px 5px 12px;border:1px solid var(--line);border-radius:99px;background:var(--bg);font-variant-numeric:tabular-nums}
+.stg.fixed{padding-right:12px}
+.stg small{font-weight:400;color:var(--muted);font-size:11px}
+.stg button{border:0;background:var(--line);color:var(--ink);border-radius:99px;min-width:24px;height:24px;padding:0 6px;cursor:pointer;font:700 12px var(--f-body)}
+.stg button[data-armed]{background:var(--warn);color:#fff}

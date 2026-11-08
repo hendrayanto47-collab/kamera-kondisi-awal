@@ -74,6 +74,16 @@
     <li>Wajib landscape, siang hari</li>
     <li>Foto dikecilkan otomatis ±1920 px</li>
   </ul>
+  <details class="panel stgpanel" id="stgPanel">
+    <summary>Atur tahap persen</summary>
+    <div class="stgchips" id="stgChips"></div>
+    <div class="add">
+      <label class="f">Tambah tahap (%)<input type="number" id="stgNew" inputmode="numeric" min="1" max="100" step="1" placeholder="mis. 30"></label>
+      <button class="btn" id="stgAdd" type="button">Tambah</button>
+      <button class="btn ghost" id="stgReset" type="button">Kembalikan bawaan</button>
+    </div>
+    <p class="hint">Tahap 0% (kondisi awal) selalu ada. Tahap yang masih berisi foto tidak bisa dihapus. Untuk mengganti, misalnya 25% → 30%: tambah 30%, lalu hapus 25%.</p>
+  </details>
   <label class="chk"><input type="checkbox" id="optGuide" checked> Tampilkan panduan posisi sebelum memotret</label>
   <label class="chk"><input type="checkbox" id="optLive" checked> Kamera dengan arahan langsung (landscape, lurus, stabil, cahaya)</label>
 
