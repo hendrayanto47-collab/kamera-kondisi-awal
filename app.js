@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.3.0 · 8 Nov 2026";
+const APP_VERSION = "1.4.0 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -18,12 +18,32 @@ const EXTRA = { k: "ruang", l: "Dalam Ruangan", d: "Tambahan · lantai, dinding,
 // Foto dari versi lama ("Tampak Samping") tetap disimpan & ikut diunduh, tapi perlu diambil ulang sebagai serong 45°
 const LEGACY = { k: "samping", l: "Tampak Samping (versi lama)", d: "Ambil ulang sebagai serong 45°", extra: true, legacy: true };
 const ALL_ANGLES = [...ANGLES, EXTRA, LEGACY];
+
+/* Tahap dokumentasi. Kunci foto:
+   0%      → "paket|sudut"            (sama seperti versi lama, foto lama tetap terbaca)
+   25–100% → "@50|paket|sudut"
+   Kegiatan→ "#keg|<id>"               */
+const STAGES = [0, 25, 50, 75, 100];
+const KEY = (pid, ak, st) => (st ? `@${st}|${pid}|${ak}` : `${pid}|${ak}`);
+function parseKey(k) {
+  if (k.startsWith("#keg|")) return { keg: true, id: k.slice(5), st: null };
+  if (k.startsWith("@")) { const [s, pid, ak] = k.split("|"); return { st: +s.slice(1), pid, ak }; }
+  const [pid, ak] = k.split("|"); return { st: 0, pid, ak };
+}
+const stageTag = st => (st === 0 ? "KONDISI AWAL 0%" : st === 100 ? "PROGRES 100% (SELESAI)" : `PROGRES ${st}%`);
+const stageName = st => (st === 0 ? "Kondisi Awal 0%" : st === 100 ? "Progres 100% (Selesai)" : `Progres ${st}%`);
+let view = 0; // 0/25/50/75/100 atau "keg"
+try { const v = localStorage.getItem("kka-view"); view = v === "keg" ? "keg" : STAGES.includes(+v) ? +v : 0; } catch (e) {}
+const curStage = () => (view === "keg" ? 0 : view);
+const KEG_PRESET = ["Rapat persiapan / sosialisasi", "Pembongkaran", "Material datang", "Pekerjaan pondasi",
+  "Pekerjaan struktur / kolom", "Pekerjaan dinding", "Pekerjaan atap", "Pekerjaan lantai", "Pekerjaan plafon",
+  "Pemasangan pintu & jendela", "Instalasi listrik", "Pengecatan", "Pembersihan", "Serah terima"];
 const angleOf = k => ALL_ANGLES.find(a => a.k === k);
 const hasRoom = p => p.grup !== "Lingkungan";
-function slotsFor(p) {
+function slotsFor(p, st) {
   const s = ANGLES.slice();
-  if (hasRoom(p) || photos.has(p.id + "|ruang")) s.push(EXTRA);
-  if (photos.has(p.id + "|samping")) s.push(LEGACY);
+  if (hasRoom(p) || photos.has(KEY(p.id, "ruang", st))) s.push(EXTRA);
+  if (photos.has(KEY(p.id, "samping", st))) s.push(LEGACY);
   return s;
 }
 const SVG = {
@@ -52,7 +72,7 @@ let profil = { ...DEFAULT_PROFIL };
    path    : lokasi file di bucket Supabase
    prevPath: file lama di Supabase yang perlu dihapus setelah foto diulang */
 const photos = new Map();
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "synced", "path", "prevPath"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "synced", "path", "prevPath"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -205,7 +225,37 @@ if (navigator.permissions) {
 }
 
 // ---------- Tampilan daftar ----------
+const inPaket = k => { const q = parseKey(k); return !q.keg && paket.some(p => p.id === q.pid); };
+const kegKeys = () => [...photos.keys()].filter(k => k.startsWith("#keg|")).sort((x, y) => photos.get(y).t - photos.get(x).t);
+function stageKeys(st) { return [...photos.keys()].filter(k => { const q = parseKey(k); return !q.keg && q.st === st && inPaket(k); }); }
+
+function renderTabs() {
+  const cnt = st => paket.reduce((s, p) => s + ANGLES.filter(a => photos.has(KEY(p.id, a.k, st))).length, 0);
+  const total = paket.length * 4;
+  $("tabs").innerHTML = STAGES.map(st => {
+    const n = cnt(st);
+    return `<button type="button" role="tab" data-view="${st}" aria-selected="${view === st}" class="tab${view === st ? " on" : ""}${n === total && total ? " full" : ""}">
+      <b>${st}%</b><small>${n}/${total}</small></button>`;
+  }).join("") + `<button type="button" role="tab" data-view="keg" aria-selected="${view === "keg"}" class="tab keg${view === "keg" ? " on" : ""}">
+      <b>Kegiatan</b><small>${kegKeys().length} foto</small></button>`;
+}
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest("[data-view]"); if (!b) return;
+  view = b.dataset.view === "keg" ? "keg" : +b.dataset.view;
+  try { localStorage.setItem("kka-view", String(view)); } catch (e) {}
+  render(); window.scrollTo({ top: $("tabs").offsetTop - 8, behavior: "smooth" });
+});
+
 function render() {
+  renderTabs();
+  const isKeg = view === "keg";
+  $("list").hidden = isKeg; $("kegSec").hidden = !isKeg; $("addSec").hidden = isKeg;
+  $("eyebrowStage").textContent = isKeg ? "Dokumentasi kegiatan" : stageName(view);
+  if (isKeg) renderKeg(); else renderPaket(view);
+  renderCloud(); renderFix();
+}
+
+function renderPaket(st) {
   const list = $("list"); list.innerHTML = "";
   let last = null;
   for (const p of paket) {
@@ -213,40 +263,66 @@ function render() {
       const h = document.createElement("p"); h.className = "group-title"; h.textContent = p.grup;
       list.appendChild(h); last = p.grup;
     }
-    const n = ANGLES.filter(a => photos.has(p.id + "|" + a.k)).length;
-    const slots = slotsFor(p);
+    const n = ANGLES.filter(a => photos.has(KEY(p.id, a.k, st))).length;
+    const slots = slotsFor(p, st);
+    const pk = slots.map(a => KEY(p.id, a.k, st)).filter(k => photos.has(k));
+    const allUp = pk.length && pk.every(k => photos.get(k).up);
     const el = document.createElement("article");
     el.className = "paket" + (n === 4 ? " done" : "");
     el.innerHTML = `<div class="ph"><h3>${esc(p.nama)}</h3><span class="chip">${n}/4 wajib</span>
+      ${pk.length ? `<button class="mini-btn share" data-share="${esc(p.id)}" type="button">${allUp ? "✓ Drive" : "Unggah ke Drive"}</button>` : ""}
       <button class="iconbtn" data-del="${esc(p.id)}" type="button" aria-label="Hapus paket ${esc(p.nama)}">Hapus</button></div>
       <div class="slots">${slots.map(a => {
-        const ph = photos.get(p.id + "|" + a.k);
+        const k = KEY(p.id, a.k, st), ph = photos.get(k);
+        const ref = !ph && st ? photos.get(KEY(p.id, a.k, 0)) : null; // foto 0% sebagai acuan
         return `<div class="slot${a.extra ? " extra" : ""}${a.legacy ? " legacy" : ""}">
-          <button class="shot${ph ? " has" : ""}" type="button" data-shoot="${esc(p.id)}|${a.k}" aria-label="${ph ? "Lihat" : "Ambil"} foto ${a.l} ${esc(p.nama)}">
-            ${ph ? `<img src="${ph.url}" alt="">` : SVG[a.k]}<span class="cam">${ph ? "Lihat" : "Ambil foto"}</span>
+          <button class="shot${ph ? " has" : ""}${ref ? " ref" : ""}" type="button" data-shoot="${esc(k)}" aria-label="${ph ? "Lihat" : "Ambil"} foto ${a.l} ${esc(p.nama)}">
+            ${ph ? `<img src="${ph.url}" alt="">` : ref ? `<img src="${ref.url}" alt=""><span class="reflbl">acuan 0%</span>` : SVG[a.k]}
+            <span class="cam">${ph ? "Lihat" : "Ambil foto"}</span>
             ${ph && window.SB && SB.enabled ? `<span class="sync${ph.synced ? " ok" : ""}">${ph.synced ? "Terkirim" : "Antre"}</span>` : ""}
             ${ph && ph.warn && ph.warn.length ? `<span class="warnb" title="${esc(ph.warn.join(" "))}">${ph.warn.length} catatan</span>` : ""}</button>
           <div class="slab"><span>${a.l}</span>${ph
-            ? `<button type="button" data-retake="${esc(p.id)}|${a.k}">Ulangi</button>`
-            : `<button type="button" class="gbtn" data-guide="${esc(p.id)}|${a.k}">Panduan</button>`}</div>
+            ? `<button type="button" data-retake="${esc(k)}">Ulangi</button>`
+            : `<button type="button" class="gbtn" data-guide="${esc(k)}">Panduan</button>`}</div>
         </div>`;
       }).join("")}</div>`;
     list.appendChild(el);
   }
   const total = paket.length * 4;
-  const cnt = paket.reduce((s, p) => s + ANGLES.filter(a => photos.has(p.id + "|" + a.k)).length, 0);
-  const anyPhoto = [...photos.keys()].some(k => paket.some(p => k.startsWith(p.id + "|")));
-  $("tCount").textContent = cnt; $("tTotal").textContent = total;
+  const cnt = paket.reduce((s, p) => s + ANGLES.filter(a => photos.has(KEY(p.id, a.k, st))).length, 0);
+  const anyPhoto = stageKeys(st).length > 0;
+  $("tCount").textContent = cnt; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${st}%`;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
-  renderCloud(); renderFix();
-  $("zipBtn").disabled = !anyPhoto;
-  const kurang = paket.filter(p => ANGLES.some(a => !photos.has(p.id + "|" + a.k))).length;
+  $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto;
+  const kurang = paket.filter(p => ANGLES.some(a => !photos.has(KEY(p.id, a.k, st)))).length;
   $("dockMsg").textContent = !profil.nama
     ? "Isi dulu nama sekolah dan NPSN, lalu ketuk kotak foto untuk membuka kamera."
-    : !anyPhoto ? "Ketuk kotak foto untuk membuka kamera. Foto langsung diberi cap identitas."
-    : kurang ? `${kurang} menu paket belum lengkap 4 foto wajib bangunan. Laporan tidak dapat dikirim bila ada yang kurang.`
-    : "Semua menu paket lengkap. Unduh lalu unggah ke tab Foto Kondisi Awal.";
+    : !anyPhoto ? (st ? `Tahap ${st}%: ketuk kotak foto. Foto 0% tampil samar di kamera sebagai acuan posisi.` : "Ketuk kotak foto untuk membuka kamera. Foto langsung diberi cap identitas.")
+    : kurang ? `${stageName(st)}: ${kurang} menu paket belum lengkap 4 foto wajib.`
+    : `${stageName(st)} lengkap. Ketuk Unggah ke Drive.`;
 }
+
+function renderKeg() {
+  const keys = kegKeys();
+  $("kegList").innerHTML = keys.length ? keys.map(k => {
+    const ph = photos.get(k);
+    return `<figure class="kegitem"><button type="button" class="shot has" data-view-k="${esc(k)}" aria-label="Lihat ${esc(ph.cap || "foto kegiatan")}">
+      <img src="${ph.url}" alt="">${ph.up ? '<span class="sync ok">✓ Drive</span>' : ""}</button>
+      <figcaption><b>${esc(ph.cap || "Kegiatan")}</b><small>${tgl(ph.t)} ${jam(ph.t)}</small></figcaption></figure>`;
+  }).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
+  $("tCount").textContent = keys.length; $("tTotal").textContent = "—"; $("tUnit").textContent = "foto kegiatan";
+  $("tBar").style.width = keys.length ? "100%" : "0";
+  $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length;
+  $("dockMsg").textContent = keys.length ? `${keys.length} foto kegiatan. Ketuk Unggah ke Drive untuk mengirim semuanya.`
+    : "Foto kegiatan: rapat, pekerjaan berlangsung, material datang, serah terima.";
+}
+$("kegCapList").innerHTML = KEG_PRESET.map(t => `<option value="${esc(t)}">`).join("");
+$("kegShoot").addEventListener("click", () => {
+  const cap = $("kegCap").value.trim();
+  if (!cap) { toast("Isi keterangan kegiatan dulu, mis. \"Pekerjaan atap\"."); $("kegCap").focus(); return; }
+  openCamera("#keg|" + Date.now().toString(36), cap);
+});
+$("kegList").addEventListener("click", e => { const b = e.target.closest("[data-view-k]"); if (b) openViewer(b.dataset.viewK); });
 
 // ---------- Aksi pada daftar ----------
 let target = null;
@@ -255,11 +331,22 @@ let liveOn = true;
 try { liveOn = localStorage.getItem("kka-live") !== "0"; } catch (e) {}
 let liveFailed = false; // kamera langsung gagal dibuka di sesi ini → pakai kamera bawaan
 function openPicker(k) { target = k; $("picker").value = ""; $("picker").click(); }
-function openCamera(k) {
+let pendingCap = ""; // keterangan foto kegiatan yang sedang diambil
+function openCamera(k, cap) {
   target = k; refreshGps();
+  const q = parseKey(k);
+  if (q.keg) pendingCap = cap != null ? cap : (photos.get(k) || {}).cap || pendingCap;
   if (!liveOn || liveFailed || !window.KKACam || !KKACam.supported()) return openPicker(k);
-  const [pid, ak] = k.split("|");
-  const p = paket.find(q => q.id === pid), a = angleOf(ak);
+  if (q.keg) {
+    return KKACam.open({
+      title: `FOTO KEGIATAN — ${pendingCap.toUpperCase()}`, sub: "Landscape dianjurkan. Pastikan kegiatan & lokasinya terlihat jelas.",
+      room: true, gps: gpsChip, onShot: f => processFile(f, k, 0),
+      onFallback: msg => { if (msg) { liveFailed = true; toast(msg + " Ketuk lagi."); } else openPicker(k); },
+    });
+  }
+  const { pid, ak, st } = q;
+  const p = paket.find(x => x.id === pid), a = angleOf(ak);
+  const ref = st ? photos.get(KEY(pid, ak, 0)) : null;
   const SUB = {
     serongkanan: "Garis kuning putus-putus = posisi pojok depan kanan bangunan.",
     serongkiri: "Garis kuning putus-putus = posisi pojok depan kiri bangunan.",
@@ -268,22 +355,25 @@ function openCamera(k) {
     ruang: "Dari pojok ruangan, arahkan diagonal: lantai, dinding, plafon.",
   };
   KKACam.open({
-    title: `${a.l.toUpperCase()} — ${p.nama.toUpperCase()}`,
-    sub: SUB[a.k] || "",
-    corner: a.k === "serongkanan" || a.k === "serongkiri",
+    title: `${a.l.toUpperCase()} — ${p.nama.toUpperCase()} · ${st}%`,
+    sub: ref ? "Foto 0% tampil samar: samakan posisi bangunan dengan foto itu." : (SUB[a.k] || ""),
+    corner: !ref && (a.k === "serongkanan" || a.k === "serongkiri"),
     room: a.k === "ruang",
-    gps: () => {
-      const g = currentGps();
-      if (!g) return { ok: false, label: "GPS mati" };
-      if (g.src === "sekolah") return { ok: true, label: "Koord. sekolah" };
-      return { ok: g.acc <= KKA.LIMIT.gpsAcc, label: `GPS ±${g.acc} m` };
-    },
+    ghost: ref ? URL.createObjectURL(ref.orig || ref.blob) : null,
+    gps: gpsChip,
     onShot: f => processFile(f, k, 0),
     onFallback: msg => {
       if (msg) { liveFailed = true; toast(msg + " Ketuk kotak foto lagi."); }
       else openPicker(k);
     },
   });
+}
+
+function gpsChip() {
+  const g = currentGps();
+  if (!g) return { ok: false, label: "GPS mati" };
+  if (g.src === "sekolah") return { ok: true, label: "Koord. sekolah" };
+  return { ok: g.acc <= KKA.LIMIT.gpsAcc, label: `GPS ±${g.acc} m` };
 }
 
 // Panduan posisi
@@ -301,7 +391,7 @@ $("optGuide").addEventListener("change", e => {
 });
 let guideKey = null;
 function showGuide(k, withCamera) {
-  const [pid, ak] = k.split("|");
+  const { pid, ak } = parseKey(k);
   const p = paket.find(q => q.id === pid), a = angleOf(ak);
   guideKey = k;
   $("gEyebrow").textContent = `Panduan posisi · ${p.nama}`;
@@ -313,13 +403,14 @@ function showGuide(k, withCamera) {
   $("guide").hidden = false;
   $("gGo").focus();
 }
-function openShoot(k) { guideOn ? showGuide(k, true) : openCamera(k); }
+function openShoot(k) { guideOn && !parseKey(k).keg ? showGuide(k, true) : openCamera(k); }
 $("gGo").addEventListener("click", () => { $("guide").hidden = true; openCamera(guideKey); });
 $("gCancel").addEventListener("click", () => ($("guide").hidden = true));
 
 $("list").addEventListener("click", e => {
   const r = e.target.closest("[data-retake]"), s = e.target.closest("[data-shoot]"), d = e.target.closest("[data-del]"),
-    g = e.target.closest("[data-guide]");
+    g = e.target.closest("[data-guide]"), sh = e.target.closest("[data-share]");
+  if (sh) { const p = paket.find(x => x.id === sh.dataset.share); return shareKeys(slotsFor(p, view).map(a => KEY(p.id, a.k, view)).filter(k => photos.has(k)), `${p.nama} · ${stageName(view)}`); }
   if (g) return showGuide(g.dataset.guide, false);
   if (r) return openShoot(r.dataset.retake);
   if (s) { photos.has(s.dataset.shoot) ? openViewer(s.dataset.shoot) : openShoot(s.dataset.shoot); return; }
@@ -327,7 +418,7 @@ $("list").addEventListener("click", e => {
     const id = d.dataset.del;
     if (d.dataset.armed) {
       paket = paket.filter(p => p.id !== id);
-      ALL_ANGLES.forEach(a => { const k = id + "|" + a.k; photos.delete(k); dbPut(k, null); });
+      STAGES.forEach(st => ALL_ANGLES.forEach(a => { const k = KEY(id, a.k, st); photos.delete(k); dbPut(k, null); }));
       // Catatan: foto yang sudah terkirim tetap ada di Supabase; hapus manual di dashboard bila perlu.
       saveState(); render();
     } else {
@@ -410,16 +501,16 @@ async function stamp(img, takenAt, gps, p, a, opts = {}) {
   // Baris 1: sudut — paket (kuning) + label program di kanan bila muat
   let y = top + pad + tFs;
   x.font = `800 ${tFs}px Arial, sans-serif`; x.fillStyle = "#f2b705"; x.textAlign = "left";
-  const title = `${a.l.toUpperCase()} — ${p.nama.toUpperCase()}`;
+  const title = opts.title || `${a.l.toUpperCase()} — ${p.nama.toUpperCase()}`;
   x.fillText(title, left, y, maxW);
-  const tag = "KONDISI AWAL 0% · REVITALISASI SD 2026";
+  const tag = (opts.tag || "KONDISI AWAL 0%") + " · REVITALISASI SD 2026";
   x.font = `700 ${Math.round(bFs * 0.8)}px Arial, sans-serif`;
   const titleW = (x.font = `800 ${tFs}px Arial, sans-serif`, x.measureText(title).width);
   x.font = `700 ${Math.round(bFs * 0.8)}px Arial, sans-serif`;
   const tagW = x.measureText(tag).width;
   const tagOnTitle = left + titleW + 30 * u + tagW <= W - pad;
   if (tagOnTitle) { x.fillStyle = "rgba(255,255,255,.85)"; x.textAlign = "right"; x.fillText(tag, W - pad, y); x.textAlign = "left"; }
-  else lines[0] += "  ·  Kondisi Awal 0%";
+  else lines[0] += "  ·  " + (opts.tag || "KONDISI AWAL 0%");
   // Baris 2–3: identitas, waktu & GPS
   x.fillStyle = "#ffffff"; x.font = `500 ${bFs}px Arial, sans-serif`;
   y += Math.round(tFs * 0.15);
@@ -432,9 +523,16 @@ async function stamp(img, takenAt, gps, p, a, opts = {}) {
   return res;
 }
 
+// Judul & label cap untuk sebuah kunci foto
+function stampCtx(k, cap) {
+  const q = parseKey(k);
+  if (q.keg) return { p: { nama: cap || "Kegiatan" }, a: { l: "Kegiatan", k: "keg" }, opts: { title: `KEGIATAN — ${(cap || "").toUpperCase()}`, tag: "DOKUMENTASI KEGIATAN" } };
+  return { p: paket.find(x => x.id === q.pid), a: angleOf(q.ak), opts: { tag: stageTag(q.st) } };
+}
+
 // ---------- Cetak ulang cap untuk foto tanpa koordinat ----------
 const noKoorKeys = () => [...photos.entries()]
-  .filter(([k, ph]) => ph.lat == null && paket.some(q => k.startsWith(q.id + "|"))).map(([k]) => k);
+  .filter(([k, ph]) => ph.lat == null && (k.startsWith("#keg|") || inPaket(k))).map(([k]) => k);
 function renderFix() {
   const n = noKoorKeys().length, sk = schoolKoor();
   $("fixBox").hidden = n === 0;
@@ -457,12 +555,11 @@ $("fixBtn").addEventListener("click", async () => {
   $("fixBtn").disabled = true;
   for (const k of keys) {
     const ph = photos.get(k);
-    const [pid, ak] = k.split("|");
-    const p = paket.find(q => q.id === pid), a = angleOf(ak);
+    const c = stampCtx(k, ph.cap);
     try {
       const src = ph.orig || ph.blob;
       const img = await createImageBitmap(src);
-      const res = await stamp(img, ph.t, { ...sk, acc: null, src: "sekolah" }, p, a, { cover: !ph.orig });
+      const res = await stamp(img, ph.t, { ...sk, acc: null, src: "sekolah" }, c.p, c.a, { ...c.opts, cover: !ph.orig });
       URL.revokeObjectURL(ph.url);
       const warn = (ph.warn || []).filter(w => !/GPS|koordinat/i.test(w)).concat("GPS HP tidak tersedia saat memotret; dicetak koordinat sekolah.");
       photos.set(k, { ...ph, blob: res.blob, lat: sk.lat, lng: sk.lng, acc: null, warn,
@@ -476,9 +573,10 @@ $("fixBtn").addEventListener("click", async () => {
 // ---------- Ambil → periksa → simpan ----------
 let pending = null; // {key, rec, url}
 const labelOf = k => {
-  const [pid, ak] = k.split("|");
-  const p = paket.find(q => q.id === pid), a = angleOf(ak);
-  return p && a ? `${a.l} ${p.nama}` : k;
+  const q = parseKey(k);
+  if (q.keg) return "Kegiatan " + ((photos.get(k) || {}).cap || pendingCap || "");
+  const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak);
+  return p && a ? `${a.l} ${p.nama}${q.st ? " " + q.st + "%" : ""}` : k;
 };
 $("picker").addEventListener("change", e => {
   const f = e.target.files && e.target.files[0];
@@ -495,8 +593,10 @@ function rotated(img, deg) {
   return c;
 }
 async function processFile(f, key, turn) {
-  const [pid, ak] = key.split("|");
-  const p = paket.find(q => q.id === pid), a = angleOf(ak);
+  const q = parseKey(key);
+  const cap = q.keg ? pendingCap : "";
+  const c = stampCtx(key, cap);
+  const p = c.p, a = c.a;
   try {
     toast("Memeriksa foto…");
     const img = rotated(await loadImage(f), turn);
@@ -504,14 +604,15 @@ async function processFile(f, key, turn) {
     const takenAt = takenTime(f);
     const gps = currentGps();
     // Foto kembar diperiksa dalam paket yang sama (beberapa ruang kelas bisa berada di gedung yang sama)
+    // Foto kembar: dibandingkan dengan foto lain di paket & tahap yang sama (foto kegiatan: sesama kegiatan)
     const others = [...photos.entries()]
-      .filter(([k, ph]) => k !== key && k.startsWith(pid + "|"))
+      .filter(([k]) => { if (k === key) return false; const o = parseKey(k); return q.keg ? o.keg : !o.keg && o.pid === q.pid && o.st === q.st; })
       .map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
-    const checks = KKA.runChecks({ info, takenAt, gps, others });
-    const res = await stamp(img, takenAt, gps, p, a);
+    const checks = KKA.runChecks({ info, takenAt, gps, others, allowPortrait: q.keg });
+    const res = await stamp(img, takenAt, gps, p, a, c.opts);
     const warn = checks.filter(c => !c.ok).map(c => c.text);
     if (pending) URL.revokeObjectURL(pending.url);
-    pending = { key, rec: { ...res, hash: info.hash, warn }, url: URL.createObjectURL(res.blob), raw: f, turn };
+    pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn };
     showReview(p, a, checks);
   } catch (err) {
     toast("Foto tidak bisa dibaca. Coba ambil ulang atau pilih format JPG/PNG.");
@@ -528,7 +629,8 @@ function showReview(p, a, checks) {
   const nWarn = checks.filter(c => !c.ok).length;
   const blocked = checks.some(c => c.block);
   pending.blocked = blocked;
-  $("rTitle").textContent = `${a.l} — ${p.nama}`;
+  const q = parseKey(pending.key);
+  $("rTitle").textContent = q.keg ? `Kegiatan — ${p.nama}` : `${a.l} — ${p.nama}${q.st ? " · " + q.st + "%" : ""}`;
   $("rImg").src = pending.url;
   $("rChecks").innerHTML = checks
     .sort((x, y) => x.ok - y.ok)
@@ -553,7 +655,7 @@ $("rSave").addEventListener("click", () => {
   const old = photos.get(key);
   if (old) URL.revokeObjectURL(old.url);
   const prevPath = old ? (old.synced ? old.path : old.prevPath) || null : null;
-  photos.set(key, { ...rec, synced: false, path: null, prevPath, url });
+  photos.set(key, { ...rec, up: undefined, synced: false, path: null, prevPath, url });
   pending = null;
   $("review").hidden = true;
   persist(key); render();
@@ -566,9 +668,10 @@ $("rCancel").addEventListener("click", closeReview);
 // ---------- Nama file & unduhan ----------
 /* Contoh: 2026-11-03 09.12 - Kelas 1 - Tampak Depan.jpg */
 function fname(k) {
-  const [pid, ak] = k.split("|");
-  const p = paket.find(q => q.id === pid), a = angleOf(ak), ph = photos.get(k);
-  return `${tgl(ph.t)} ${jam(ph.t)} - ${clean(p.nama)} - ${a.l}.jpg`;
+  const q = parseKey(k), ph = photos.get(k);
+  if (q.keg) return `${tgl(ph.t)} ${jam(ph.t)} - Kegiatan - ${clean(ph.cap || "Kegiatan")}.jpg`;
+  const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak);
+  return `${tgl(ph.t)} ${jam(ph.t)} - ${clean(p.nama)} - ${a.l}${q.st ? " - " + q.st + "%" : ""}.jpg`;
 }
 function download(filename, blob) {
   const url = URL.createObjectURL(blob);
@@ -588,23 +691,53 @@ document.addEventListener("keydown", e => {
   if (!$("review").hidden) closeReview();
 });
 $("vSave").onclick = () => download(fname(vKey), photos.get(vKey).blob);
+$("vShare").onclick = () => shareKeys([vKey], labelOf(vKey));
+$("vDel").onclick = () => {
+  const b = $("vDel");
+  if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "Yakin hapus?"; setTimeout(() => { delete b.dataset.armed; b.textContent = "Hapus"; }, 3000); return; }
+  delete b.dataset.armed; b.textContent = "Hapus";
+  const ph = photos.get(vKey); if (ph) URL.revokeObjectURL(ph.url);
+  photos.delete(vKey); dbPut(vKey, null); $("viewer").hidden = true; render(); toast("Foto dihapus.");
+};
 
 /* ZIP: Foto Kondisi Awal - <Sekolah>/<Nama paket>/<tanggal jam - paket - sudut>.jpg */
+function viewKeys() {
+  if (view === "keg") return kegKeys();
+  const out = [];
+  for (const p of paket) for (const a of ALL_ANGLES) { const k = KEY(p.id, a.k, view); if (photos.has(k)) out.push(k); }
+  return out;
+}
 $("zipBtn").onclick = async () => {
-  const rootName = `Foto Kondisi Awal - ${clean(profil.nama || "Sekolah")}`;
+  const rootName = view === "keg" ? `Foto Kegiatan - ${clean(profil.nama || "Sekolah")}`
+    : view === 0 ? `Foto Kondisi Awal - ${clean(profil.nama || "Sekolah")}` : `Foto Progres ${view}% - ${clean(profil.nama || "Sekolah")}`;
   const entries = []; let first = Infinity;
-  for (const p of paket) {
-    for (const a of ALL_ANGLES) {
-      const k = p.id + "|" + a.k, ph = photos.get(k);
-      if (!ph) continue;
-      first = Math.min(first, ph.t);
-      entries.push({ path: `${rootName}/${clean(p.nama)}/${fname(k)}`, blob: ph.blob, date: new Date(ph.t) });
-    }
+  for (const k of viewKeys()) {
+    const ph = photos.get(k), q = parseKey(k);
+    first = Math.min(first, ph.t);
+    const sub = q.keg ? "" : clean(paket.find(x => x.id === q.pid).nama) + "/";
+    entries.push({ path: `${rootName}/${sub}${fname(k)}`, blob: ph.blob, date: new Date(ph.t) });
   }
   toast("Menyusun ZIP…");
   const blob = await window.makeZip(entries);
   download(`${rootName} - ${tgl(first)}.zip`, blob);
 };
+
+// ---------- Unggah ke Drive (menu Bagikan bawaan HP) ----------
+/* Membuka menu Bagikan iPhone/Android berisi foto-foto ini. Pilih "Drive", lalu pilih folder tujuan.
+   Tidak menyimpan ke galeri. Foto yang sudah dibagikan ditandai "✓ Drive". */
+function shareKeys(keys, title) {
+  if (!keys.length) return toast("Belum ada foto untuk diunggah.");
+  const files = keys.map(k => { const ph = photos.get(k); return new File([ph.blob], fname(k), { type: "image/jpeg", lastModified: ph.t }); });
+  if (!navigator.canShare || !navigator.canShare({ files })) {
+    return toast("HP/browser ini belum mendukung kirim langsung. Pakai Unduh (.zip), lalu unggah lewat aplikasi Drive.");
+  }
+  navigator.share({ files, title }).then(() => {
+    const now = Date.now();
+    keys.forEach(k => { const ph = photos.get(k); if (ph) { ph.up = now; persist(k); } });
+    render(); toast(`${keys.length} foto dibagikan. Periksa di Google Drive.`);
+  }).catch(e => { if (e && e.name !== "AbortError") toast("Gagal membuka menu Bagikan: " + e.message); });
+}
+$("shareAllBtn").onclick = () => shareKeys(viewKeys(), view === "keg" ? "Foto kegiatan" : stageName(view));
 
 // ---------- Sinkronisasi Supabase ----------
 /* Folder di bucket: "<NPSN> - <Nama Sekolah>/<Nama paket>/<tanggal jam - paket - sudut>.jpg" */
@@ -619,15 +752,15 @@ async function syncAll(manual) {
   let ok = 0, err = null;
   for (const [k, ph] of photos) {
     if (ph.synced) continue;
-    const [pid, ak] = k.split("|");
-    const p = paket.find(q => q.id === pid), a = angleOf(ak);
+    const q = parseKey(k); if (q.keg) continue;
+    const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak);
     if (!p || !a) continue;
-    const path = `${schoolFolder()}/${clean(p.nama)}/${fname(k)}`;
+    const path = `${schoolFolder()}/${q.st}%/${clean(p.nama)}/${fname(k)}`;
     try {
       await SB.upload(path, ph.blob);
       await SB.upsertRow({
         npsn: profil.npsn, nama_sekolah: profil.nama, wilayah: profil.wil || null,
-        paket: p.nama, sudut: a.l, diambil_pada: new Date(ph.t).toISOString(),
+        paket: p.nama, sudut: q.st ? `${a.l} (${q.st}%)` : a.l, diambil_pada: new Date(ph.t).toISOString(),
         lat: ph.lat ?? null, lng: ph.lng ?? null, akurasi_m: ph.acc ?? null,
         storage_path: path, diperbarui: new Date().toISOString(),
       });

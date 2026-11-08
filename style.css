@@ -164,3 +164,26 @@ html.vf-open, html.vf-open body{overflow:hidden}
 .vf-shutter:active{transform:scale(.94)}
 .vf[data-state="go"] .vf-shutter{border-color:var(--go);background:rgba(47,191,104,.55);box-shadow:0 0 0 6px rgba(47,191,104,.3)}
 .vf.flash::after{content:"";position:fixed;inset:0;background:#fff;opacity:.7;pointer-events:none}
+
+/* ---------- Tahap & kegiatan ---------- */
+.tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) minmax(0,1.4fr);gap:5px}
+.tab{min-width:0;display:grid;justify-items:center;gap:0;padding:8px 2px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;font:inherit}
+.tab b{font-family:var(--f-display);font-size:16px}
+.tab small{font-family:var(--f-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tab.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.tab.on small{color:var(--surface);opacity:.8}
+.tab.full:not(.on){border-color:var(--ok)}
+.tab.full small{color:var(--ok)}
+.tab.keg b{font-size:12px;letter-spacing:-.01em}
+@media (max-width:380px){.tab b{font-size:14px}.tab.keg b{font-size:11px}}
+.mini-btn.share{white-space:nowrap}
+.shot.ref img{opacity:.35;filter:grayscale(.6)}
+.reflbl{position:absolute;left:6px;top:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:rgba(0,0,0,.55);color:#fff;border-radius:99px;padding:2px 7px}
+.keglist{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:14px}
+.kegitem{margin:0;display:grid;gap:6px}
+.kegitem figcaption{display:grid;font-size:13px;min-width:0}
+.kegitem figcaption b{overflow-wrap:anywhere}
+.kegitem small{color:var(--muted);font-family:var(--f-mono);font-size:11px}
+.dockbtns{display:flex;gap:8px;flex-wrap:wrap}
+.vf-ghost{position:fixed;pointer-events:none;opacity:.38;object-fit:cover;transform-origin:center}
+.vf-ghostbtn{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(120px + env(safe-area-inset-bottom,0px))}

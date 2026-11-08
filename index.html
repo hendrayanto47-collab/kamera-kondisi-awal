@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Kamera Kondisi Awal</title>
+  <title>Kamera Revitalisasi SD</title>
   <meta name="description" content="Ambil 4 foto wajib bangunan per menu paket dengan cap identitas sekolah, waktu, dan GPS untuk Laporan Pendahuluan Revitalisasi SD 2026.">
   <meta name="theme-color" content="#1d2421">
   <link rel="manifest" href="manifest.webmanifest">
@@ -17,11 +17,11 @@
 <div class="wrap">
   <header class="top">
     <div>
-      <p class="eyebrow">Revitalisasi SD 2026 · Tab 3 Laporan Pendahuluan</p>
-      <h1>Kamera Foto Kondisi Awal</h1>
+      <p class="eyebrow">Revitalisasi SD 2026 · <span id="eyebrowStage">Kondisi Awal 0%</span></p>
+      <h1>Kamera Revitalisasi SD</h1>
     </div>
     <div>
-      <div class="tally"><b id="tCount">0</b> / <span id="tTotal">0</span> foto wajib</div>
+      <div class="tally"><b id="tCount">0</b> / <span id="tTotal">0</span> <span id="tUnit">foto wajib</span></div>
       <div class="meter"><i id="tBar"></i></div>
     </div>
   </header>
@@ -77,9 +77,22 @@
   <label class="chk"><input type="checkbox" id="optGuide" checked> Tampilkan panduan posisi sebelum memotret</label>
   <label class="chk"><input type="checkbox" id="optLive" checked> Kamera dengan arahan langsung (landscape, lurus, stabil, cahaya)</label>
 
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Tahap dokumentasi"></nav>
+
   <div id="list" class="list"></div>
 
-  <section class="panel" aria-labelledby="hAdd">
+  <section class="panel" id="kegSec" aria-labelledby="hKeg" hidden>
+    <h2 id="hKeg">Foto kegiatan</h2>
+    <div class="add">
+      <label class="f">Keterangan kegiatan<input type="text" id="kegCap" list="kegCapList" placeholder="Pilih atau ketik, mis. Pekerjaan atap" autocomplete="off"></label>
+      <datalist id="kegCapList"></datalist>
+      <button class="btn primary" id="kegShoot" type="button">Ambil foto kegiatan</button>
+    </div>
+    <p class="hint">Keterangan tercetak di cap foto dan nama file. Jumlah foto bebas.</p>
+    <div class="keglist" id="kegList"></div>
+  </section>
+
+  <section class="panel" id="addSec" aria-labelledby="hAdd">
     <h2 id="hAdd">Tambah menu paket</h2>
     <div class="add">
       <label class="f">Nama ruang / paket<input type="text" id="aNama" placeholder="mis. perpustakaan"></label>
@@ -125,14 +138,19 @@
 
 <div class="dock"><div class="in">
   <p id="dockMsg"></p>
-  <button class="btn primary" id="zipBtn" type="button" disabled>Unduh semua (.zip)</button>
+  <div class="dockbtns">
+    <button class="btn" id="zipBtn" type="button" disabled>Unduh (.zip)</button>
+    <button class="btn primary" id="shareAllBtn" type="button" disabled>Unggah ke Drive</button>
+  </div>
 </div></div>
 
 <div class="viewer" id="viewer" hidden role="dialog" aria-label="Pratinjau foto">
   <div>
     <img id="vImg" alt="">
     <div class="vbar">
-      <button class="btn primary" id="vSave" type="button">Unduh foto ini</button>
+      <button class="btn primary" id="vShare" type="button">Unggah ke Drive</button>
+      <button class="btn" id="vSave" type="button">Unduh</button>
+      <button class="btn ghost" id="vDel" type="button">Hapus</button>
       <button class="btn" id="vClose" type="button">Tutup</button>
     </div>
   </div>
@@ -140,6 +158,7 @@
 
 <div class="vf" id="vf" hidden role="dialog" aria-modal="true" aria-label="Kamera">
   <video id="vfVideo" playsinline muted autoplay></video>
+  <img id="vfGhost" class="vf-ghost" alt="" hidden>
   <svg id="vfGuide" class="vf-guide" aria-hidden="true"></svg>
   <i class="vf-line ref" id="vfLevelRef"></i>
   <i class="vf-line hz" id="vfLevel"></i>
@@ -153,6 +172,7 @@
     <button class="vf-btn" id="vfClose" type="button">Tutup</button>
     <button class="vf-shutter" id="vfShutter" type="button" aria-label="Jepret"></button>
     <button class="vf-btn" id="vfNative" type="button">Kamera<br>bawaan</button>
+    <button class="vf-btn vf-ghostbtn" id="vfGhostBtn" type="button" hidden>Acuan 0%<br>tampil</button>
   </div>
 </div>
 <input type="file" id="picker" accept="image/*" capture="environment" hidden>

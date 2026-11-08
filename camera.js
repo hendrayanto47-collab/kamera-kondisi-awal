@@ -19,6 +19,7 @@
 
   let stream = null, timer = null, opts = null;
   let grav = null, rot = 0, motionSeen = false, wasReady = false, lastBright = null;
+  let ghostOn = false;
 
   function onMotion(e) {
     const g = e.accelerationIncludingGravity;
@@ -69,6 +70,10 @@
     opts = o;
     grav = null; rot = 0; motionSeen = false; wasReady = false; lastBright = null;
     const sensorP = requestSensors(); // dipanggil langsung dari ketukan (iOS)
+    // Foto acuan 0% (untuk tahap 25–100%): tampil samar di atas gambar kamera
+    ghostOn = !!o.ghost;
+    $("vfGhost").hidden = !ghostOn; $("vfGhostBtn").hidden = !o.ghost;
+    if (o.ghost) { $("vfGhost").src = o.ghost; $("vfGhostBtn").innerHTML = "Acuan 0%<br>sembunyikan"; }
     $("vfTitle").textContent = o.title;
     $("vfSub").textContent = o.sub || "";
     $("vf").hidden = false;
@@ -101,6 +106,8 @@
     if (stream) stream.getTracks().forEach(t => t.stop());
     stream = null;
     $("vfVideo").srcObject = null;
+    if (opts && opts.ghost) { try { URL.revokeObjectURL(opts.ghost); } catch (e) {} }
+    $("vfGhost").hidden = true; $("vfGhost").removeAttribute("src");
     $("vf").hidden = true;
     document.documentElement.classList.remove("vf-open");
   }
@@ -120,6 +127,21 @@
   window.addEventListener("resize", () => { if (stream) layout(); });
 
   // Garis bantu: garis sepertiga + garis tengah "pojok bangunan" untuk sudut serong
+  // Letakkan foto acuan tepat di atas area gambar, diputar sesuai posisi HP
+  function placeGhost(turn) {
+    if (!ghostOn) return;
+    const g = $("vfGuide"), w = parseFloat(g.style.width) || 0, h = parseFloat(g.style.height) || 0;
+    const l = parseFloat(g.style.left) || 0, t = parseFloat(g.style.top) || 0;
+    const im = $("vfGhost"), sw = turn % 180 !== 0;
+    im.style.width = (sw ? h : w) + "px"; im.style.height = (sw ? w : h) + "px";
+    im.style.left = l + w / 2 + "px"; im.style.top = t + h / 2 + "px";
+    im.style.transform = `translate(-50%,-50%) rotate(${(360 - turn) % 360}deg)`;
+  }
+  $("vfGhostBtn").addEventListener("click", () => {
+    ghostOn = !ghostOn; $("vfGhost").hidden = !ghostOn;
+    $("vfGhostBtn").innerHTML = ghostOn ? "Acuan 0%<br>sembunyikan" : "Acuan 0%<br>tampilkan";
+  });
+
   function drawGuide(turn) {
     const g = $("vfGuide"), w = parseFloat(g.style.width) || 0, h = parseFloat(g.style.height) || 0;
     if (!w) return;
@@ -164,7 +186,7 @@
     $("vfHint").dataset.turn = String(cssTurn);
     $("vfLevel").style.transform = p ? `translate(-50%,-50%) rotate(${-p.roll}deg)` : "translate(-50%,-50%)";
     $("vfLevelRef").style.transform = p ? `translate(-50%,-50%) rotate(${-p.snapped}deg)` : "translate(-50%,-50%)";
-    drawGuide(turn);
+    drawGuide(turn); placeGhost(turn);
 
     // Syarat
     const frameLandscape = turn % 180 === 0 ? v.videoWidth > v.videoHeight : v.videoHeight > v.videoWidth;

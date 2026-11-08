@@ -1,7 +1,7 @@
 {
-  "name": "Kamera Foto Kondisi Awal",
+  "name": "Kamera Revitalisasi SD",
   "short_name": "Kamera RevitSD",
-  "description": "Foto kondisi awal 4 sudut per menu paket dengan cap identitas sekolah, waktu, dan GPS.",
+  "description": "Dokumentasi foto & video revitalisasi SD: kondisi awal sampai selesai, dengan cap identitas sekolah, waktu, dan GPS.",
   "lang": "id",
   "start_url": "./",
   "scope": "./",

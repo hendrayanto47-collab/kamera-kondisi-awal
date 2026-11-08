@@ -187,12 +187,15 @@
   };
 
   /* Hasil: [{ok:boolean, text, block?}] — ok:false = peringatan; block:true = tidak boleh disimpan */
-  function runChecks({ info, takenAt, gps, others }) {
+  function runChecks({ info, takenAt, gps, others, allowPortrait }) {
     const out = [];
     const add = (ok, text, block) => out.push({ ok, text, block: !!block });
 
     // 1. Orientasi — wajib landscape sesuai ketentuan Form Unggah Dokumentasi 0%
-    if (info.h > info.w) add(false, "Foto portrait (tegak) tidak diperkenankan. Miringkan HP (landscape) lalu ambil ulang.", true);
+    if (info.h > info.w) {
+      if (allowPortrait) add(false, "Foto portrait. Untuk laporan, landscape (HP dimiringkan) lebih dianjurkan.");
+      else add(false, "Foto portrait (tegak) tidak diperkenankan. Miringkan HP (landscape) lalu ambil ulang.", true);
+    }
     else add(true, "Landscape");
 
     // 2. Ketajaman
