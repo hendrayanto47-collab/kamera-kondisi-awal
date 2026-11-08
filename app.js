@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.7.0 · 8 Nov 2026";
+const APP_VERSION = "1.7.1 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -91,12 +91,14 @@ function persist(k) {
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
 }
 
+/* trash: ruang yang dihapus beserta waktu hapusnya. Fotonya TIDAK dihapus sampai "Hapus permanen". */
+let trash = [];
 try {
   const s = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
-  if (s) { paket = s.paket || paket; profil = { ...profil, ...s.profil }; }
+  if (s) { paket = s.paket || paket; profil = { ...profil, ...s.profil }; trash = s.trash || []; }
 } catch (e) {}
 function saveState() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify({ paket, profil })); } catch (e) {}
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ paket, profil, trash })); } catch (e) {}
 }
 
 // ---------- IndexedDB untuk foto ----------
@@ -159,9 +161,13 @@ function fmtDate(d) {
     " · " + `${two(d.getHours())}:${two(d.getMinutes())}` + " " + zoneLabel(d);
 }
 let tt;
-function toast(m) {
+function toast(m, actLabel, act) {
   const t = $("toast"); t.textContent = m; t.hidden = false;
-  clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), 3200);
+  if (actLabel) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "toastbtn"; b.textContent = actLabel;
+    b.onclick = () => { t.hidden = true; act(); }; t.appendChild(b);
+  }
+  clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), actLabel ? 8000 : 3200);
 }
 
 // ---------- Identitas ----------
@@ -313,6 +319,7 @@ function render() {
   $("list").hidden = isKeg; $("kegSec").hidden = !isKeg; $("vidSec").hidden = !isKeg; $("addSec").hidden = isKeg;
   $("eyebrowStage").textContent = isKeg ? "Dokumentasi kegiatan" : stageName(view);
   if (isKeg) { renderKeg(); renderVid(); } else renderPaket(view);
+  renderTrash();
   renderCloud(); renderFix();
 }
 
@@ -332,7 +339,7 @@ function renderPaket(st) {
     el.className = "paket" + (n === 4 ? " done" : "");
     el.innerHTML = `<div class="ph"><h3>${esc(p.nama)}</h3><span class="chip">${n}/4 wajib</span>
       ${pk.length ? `<button class="mini-btn share" data-share="${esc(p.id)}" type="button">${allUp ? "✓ Drive" : "Unggah ke Drive"}</button>` : ""}
-      <button class="iconbtn" data-del="${esc(p.id)}" type="button" aria-label="Hapus paket ${esc(p.nama)}">Hapus</button></div>
+      <button class="iconbtn" data-del="${esc(p.id)}" type="button" aria-label="Hapus ruang ${esc(p.nama)} dari daftar">Hapus ruang</button></div>
       <div class="slots">${slots.map(a => {
         const k = KEY(p.id, a.k, st), ph = photos.get(k);
         const ref = !ph && st ? photos.get(KEY(p.id, a.k, 0)) : null; // foto 0% sebagai acuan
@@ -476,28 +483,86 @@ $("list").addEventListener("click", e => {
   if (r) return openShoot(r.dataset.retake);
   if (s) { photos.has(s.dataset.shoot) ? openViewer(s.dataset.shoot) : openShoot(s.dataset.shoot); return; }
   if (d) {
-    const id = d.dataset.del;
-    if (d.dataset.armed) {
-      paket = paket.filter(p => p.id !== id);
-      [...photos.keys()].filter(k => { const q = parseKey(k); return !q.keg && q.pid === id; }).forEach(k => { photos.delete(k); dbPut(k, null); });
-      // Catatan: foto yang sudah terkirim tetap ada di Supabase; hapus manual di dashboard bila perlu.
-      saveState(); render();
-    } else {
-      d.dataset.armed = 1; d.textContent = "Yakin hapus?";
-      setTimeout(() => { if (d.isConnected) { delete d.dataset.armed; d.textContent = "Hapus"; } }, 3000);
+    const id = d.dataset.del, n = paketPhotoKeys(id).length;
+    if (d.dataset.armed) { trashPaket(id); }
+    else {
+      d.dataset.armed = 1;
+      d.textContent = n ? `Hapus ruang + ${n} foto?` : "Yakin hapus ruang?";
+      setTimeout(() => { if (d.isConnected) { delete d.dataset.armed; d.textContent = "Hapus ruang"; } }, 4000);
     }
   }
+});
+
+// ---------- Hapus ruang → tempat sampah (bisa dipulihkan) ----------
+const paketPhotoKeys = id => [...photos.keys()].filter(k => { const q = parseKey(k); return !q.keg && q.pid === id; });
+function trashPaket(id) {
+  const i = paket.findIndex(p => p.id === id); if (i < 0) return;
+  const [p] = paket.splice(i, 1);
+  trash = trash.filter(t => t.id !== id); trash.unshift({ ...p, del: Date.now() });
+  saveState(); render();
+  toast(`${p.nama} dipindah ke "Ruang yang dihapus". Foto masih aman.`, "Urungkan", () => restorePaket(id));
+}
+function placePaket(item) {
+  const idx = paket.map(p => p.grup).lastIndexOf(item.grup);
+  idx < 0 ? paket.push(item) : paket.splice(idx + 1, 0, item);
+}
+function restorePaket(id) {
+  const t = trash.find(x => x.id === id); if (!t) return;
+  trash = trash.filter(x => x.id !== id);
+  const { del, ...item } = t;
+  // kembalikan ke urutan aslinya bila ruang bawaan
+  const di = DEFAULT_PAKET.findIndex(p => p.id === id);
+  if (di >= 0) {
+    const after = DEFAULT_PAKET.slice(0, di).map(p => p.id).reverse().find(pid => paket.some(p => p.id === pid));
+    const pos = after ? paket.findIndex(p => p.id === after) + 1 : 0;
+    paket.splice(pos, 0, item);
+  } else placePaket(item);
+  saveState(); render(); toast(`${item.nama} dipulihkan beserta ${paketPhotoKeys(id).length} foto.`);
+}
+function purgePaket(id) {
+  paketPhotoKeys(id).forEach(k => { const ph = photos.get(k); if (ph && ph.url) URL.revokeObjectURL(ph.url); photos.delete(k); dbPut(k, null); });
+  trash = trash.filter(x => x.id !== id); saveState(); render(); toast("Ruang dan fotonya dihapus permanen.");
+}
+function renderTrash() {
+  $("trashBox").hidden = !trash.length;
+  $("trashList").innerHTML = trash.map(t => {
+    const n = paketPhotoKeys(t.id).length;
+    return `<li><span><b>${esc(t.nama)}</b> <small>${n} foto · dihapus ${tgl(t.del)} ${jam(t.del)}</small></span>
+      <span class="acts"><button class="btn primary" type="button" data-restore="${esc(t.id)}">Pulihkan</button>
+      <button class="btn ghost" type="button" data-purge="${esc(t.id)}">Hapus permanen</button></span></li>`;
+  }).join("");
+  const missing = DEFAULT_PAKET.filter(d => !paket.some(p => p.id === d.id));
+  $("defBtn").hidden = !missing.length;
+  $("defBtn").textContent = `Kembalikan ruang bawaan (${missing.map(m => m.nama).join(", ")})`;
+}
+$("trashList").addEventListener("click", e => {
+  const r = e.target.closest("[data-restore]"), pg = e.target.closest("[data-purge]");
+  if (r) restorePaket(r.dataset.restore);
+  if (pg) {
+    if (!pg.dataset.armed) { pg.dataset.armed = 1; pg.textContent = "Yakin? Foto ikut hilang"; setTimeout(() => { if (pg.isConnected) { delete pg.dataset.armed; pg.textContent = "Hapus permanen"; } }, 4000); return; }
+    purgePaket(pg.dataset.purge);
+  }
+});
+$("defBtn").addEventListener("click", () => {
+  const missing = DEFAULT_PAKET.filter(d => !paket.some(p => p.id === d.id));
+  missing.forEach(m => { if (trash.some(t => t.id === m.id)) restorePaket(m.id); });
+  DEFAULT_PAKET.filter(d => !paket.some(p => p.id === d.id)).forEach(m => {
+    const di = DEFAULT_PAKET.indexOf(m);
+    const after = DEFAULT_PAKET.slice(0, di).map(p => p.id).reverse().find(pid => paket.some(p => p.id === pid));
+    paket.splice(after ? paket.findIndex(p => p.id === after) + 1 : 0, 0, { ...m });
+  });
+  saveState(); render(); toast(`${missing.map(m => m.nama).join(", ")} ditambahkan kembali.`);
 });
 $("aBtn").addEventListener("click", () => {
   const nm = $("aNama").value.trim();
   if (!nm) { $("aNama").focus(); return; }
   const grup = $("aGrup").value;
   let id = nm.toLowerCase().replace(/[^a-z0-9]+/g, "") || "paket";
-  while (paket.some(p => p.id === id)) id += "x";
-  const idx = paket.map(p => p.grup).lastIndexOf(grup);
-  const item = { id, nama: nm, grup };
-  idx < 0 ? paket.push(item) : paket.splice(idx + 1, 0, item);
-  $("aNama").value = ""; saveState(); render(); toast("Paket " + nm + " ditambahkan");
+  const inTrash = trash.find(t => t.id === id);
+  if (inTrash) { $("aNama").value = ""; restorePaket(id); return; } // nama sama dengan ruang yang dihapus → pulihkan
+  while (paket.some(p => p.id === id) || trash.some(t => t.id === id)) id += "x";
+  placePaket({ id, nama: nm, grup });
+  $("aNama").value = ""; saveState(); render(); toast("Ruang " + nm + " ditambahkan");
 });
 
 // ---------- Video ----------

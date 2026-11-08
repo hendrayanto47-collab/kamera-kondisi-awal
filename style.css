@@ -231,3 +231,14 @@ h3.sub{font-family:var(--f-display);font-size:15px;margin:0}
 .inrow{display:flex;gap:8px;align-items:stretch}
 .inrow input{flex:1;min-width:0}
 .inrow .mini-btn{white-space:nowrap;text-transform:none;letter-spacing:0;font-weight:600}
+
+.toastbtn{margin-left:12px;border:0;border-radius:6px;padding:4px 10px;font:700 13px var(--f-body);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.defbtn{margin-top:12px;text-align:left;white-space:normal}
+.trashbox{margin-top:16px;border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px}
+.trashbox .hint{margin:0}
+.trashlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.trashlist li{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg)}
+.trashlist small{color:var(--muted);font-size:12px}
+.trashlist .acts{display:flex;gap:6px;flex-wrap:wrap}
+.trashlist .btn{padding:7px 12px;font-size:13px}
+.iconbtn[data-armed]{color:var(--warn);font-weight:700}

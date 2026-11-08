@@ -130,11 +130,17 @@
   </section>
 
   <section class="panel" id="addSec" aria-labelledby="hAdd">
-    <h2 id="hAdd">Tambah menu paket</h2>
+    <h2 id="hAdd">Tambah / kelola ruang</h2>
     <div class="add">
       <label class="f">Nama ruang / paket<input type="text" id="aNama" placeholder="mis. perpustakaan"></label>
       <label class="f">Kelompok<select id="aGrup"></select></label>
       <button class="btn" id="aBtn" type="button">Tambah</button>
+    </div>
+    <button class="btn ghost defbtn" id="defBtn" type="button" hidden></button>
+    <div class="trashbox" id="trashBox" hidden>
+      <h3 class="sub">Ruang yang dihapus</h3>
+      <p class="hint">Foto di ruang ini masih tersimpan. Pulihkan untuk menampilkannya lagi.</p>
+      <ul class="trashlist" id="trashList"></ul>
     </div>
   </section>
   <p class="ver">Versi <span id="ver"></span></p>
