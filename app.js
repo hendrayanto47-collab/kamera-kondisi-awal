@@ -2,20 +2,37 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.1.4 · 3 Nov 2026";
+const APP_VERSION = "1.2.0 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
+/* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
+   Tampak Depan, Tampak Serong Kanan 45°, Tampak Serong Kiri 45°, Tampak Belakang. */
 const ANGLES = [
-  { k: "depan",    l: "Tampak Depan",    d: "Fasad, pintu masuk" },
-  { k: "belakang", l: "Tampak Belakang", d: "Sisi belakang bangunan" },
-  { k: "samping",  l: "Tampak Samping",  d: "Sisi kiri atau kanan" },
-  { k: "dalam",    l: "Dalam Ruang",     d: "Lantai, dinding, plafon" },
+  { k: "depan",       l: "Tampak Depan",            d: "Lurus menghadap fasad" },
+  { k: "serongkanan", l: "Tampak Serong Kanan 45°", d: "Dari pojok depan kanan" },
+  { k: "serongkiri",  l: "Tampak Serong Kiri 45°",  d: "Dari pojok depan kiri" },
+  { k: "belakang",    l: "Tampak Belakang",         d: "Sisi belakang bangunan" },
 ];
+// Foto tambahan (tidak dihitung wajib): kondisi di dalam ruangan
+const EXTRA = { k: "ruang", l: "Dalam Ruangan", d: "Tambahan · lantai, dinding, plafon", extra: true };
+// Foto dari versi lama ("Tampak Samping") tetap disimpan & ikut diunduh, tapi perlu diambil ulang sebagai serong 45°
+const LEGACY = { k: "samping", l: "Tampak Samping (versi lama)", d: "Ambil ulang sebagai serong 45°", extra: true, legacy: true };
+const ALL_ANGLES = [...ANGLES, EXTRA, LEGACY];
+const angleOf = k => ALL_ANGLES.find(a => a.k === k);
+const hasRoom = p => p.grup !== "Lingkungan";
+function slotsFor(p) {
+  const s = ANGLES.slice();
+  if (hasRoom(p) || photos.has(p.id + "|ruang")) s.push(EXTRA);
+  if (photos.has(p.id + "|samping")) s.push(LEGACY);
+  return s;
+}
 const SVG = {
   depan: '<svg viewBox="0 0 60 44" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 20 30 6l24 14"/><rect x="10" y="20" width="40" height="20"/><rect x="26" y="27" width="8" height="13"/><rect x="14" y="25" width="7" height="6"/><rect x="39" y="25" width="7" height="6"/></svg>',
   belakang: '<svg viewBox="0 0 60 44" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 20 30 6l24 14"/><rect x="10" y="20" width="40" height="20"/><rect x="16" y="25" width="10" height="6"/><rect x="34" y="25" width="10" height="6"/></svg>',
+  serongkanan: '<svg viewBox="0 0 60 44" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18 22 6h30l-6 12"/><path d="M4 18h28v22H4zM32 18l14-12v22L32 40"/><rect x="10" y="24" width="7" height="6"/><rect x="36" y="20" width="5" height="7"/></svg>',
+  serongkiri: '<svg viewBox="0 0 60 44" fill="none" stroke="currentColor" stroke-width="2"><path d="M56 18 38 6H8l6 12"/><path d="M56 18H28v22h28zM28 18 14 6v22l14 12"/><rect x="43" y="24" width="7" height="6"/><rect x="19" y="20" width="5" height="7"/></svg>',
   samping: '<svg viewBox="0 0 60 44" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 16h44l-6-10H14z"/><rect x="12" y="16" width="36" height="24"/><rect x="18" y="22" width="8" height="7"/><rect x="34" y="22" width="8" height="7"/></svg>',
-  dalam: '<svg viewBox="0 0 60 44" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4l12 10h20L52 4M8 40l12-10h20l12 10"/><rect x="20" y="14" width="20" height="16"/></svg>',
+  ruang: '<svg viewBox="0 0 60 44" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4l12 10h20L52 4M8 40l12-10h20l12 10"/><rect x="20" y="14" width="20" height="16"/></svg>',
 };
 const GROUPS = ["Ruang kelas", "Ruang administrasi", "Lingkungan", "Lainnya"];
 const DEFAULT_PAKET = [
@@ -72,12 +89,19 @@ function dbLoad() {
   return new Promise(res => {
     if (!idb) return res();
     try {
-      const rq = idb.transaction("p").objectStore("p").openCursor();
+      const rq = idb.transaction("p", "readwrite").objectStore("p").openCursor();
       rq.onsuccess = () => {
         const c = rq.result;
         if (!c) return res();
         const v = c.value;
-        if (v && v.blob) photos.set(c.key, { ...v, t: v.t || Date.now(), url: URL.createObjectURL(v.blob) });
+        let key = c.key;
+        // Migrasi versi lama: slot "Dalam Ruang" (dalam) → "Dalam Ruangan" (ruang)
+        if (typeof key === "string" && key.endsWith("|dalam")) {
+          key = key.replace(/\|dalam$/, "|ruang");
+          try { c.delete(); } catch (e) {}
+          if (v && v.blob) dbPut(key, v);
+        }
+        if (v && v.blob) photos.set(key, { ...v, t: v.t || Date.now(), url: URL.createObjectURL(v.blob) });
         c.continue();
       };
       rq.onerror = () => res();
@@ -190,13 +214,14 @@ function render() {
       list.appendChild(h); last = p.grup;
     }
     const n = ANGLES.filter(a => photos.has(p.id + "|" + a.k)).length;
+    const slots = slotsFor(p);
     const el = document.createElement("article");
     el.className = "paket" + (n === 4 ? " done" : "");
-    el.innerHTML = `<div class="ph"><h3>${esc(p.nama)}</h3><span class="chip">${n}/4 foto</span>
+    el.innerHTML = `<div class="ph"><h3>${esc(p.nama)}</h3><span class="chip">${n}/4 wajib</span>
       <button class="iconbtn" data-del="${esc(p.id)}" type="button" aria-label="Hapus paket ${esc(p.nama)}">Hapus</button></div>
-      <div class="slots">${ANGLES.map(a => {
+      <div class="slots">${slots.map(a => {
         const ph = photos.get(p.id + "|" + a.k);
-        return `<div class="slot">
+        return `<div class="slot${a.extra ? " extra" : ""}${a.legacy ? " legacy" : ""}">
           <button class="shot${ph ? " has" : ""}" type="button" data-shoot="${esc(p.id)}|${a.k}" aria-label="${ph ? "Lihat" : "Ambil"} foto ${a.l} ${esc(p.nama)}">
             ${ph ? `<img src="${ph.url}" alt="">` : SVG[a.k]}<span class="cam">${ph ? "Lihat" : "Ambil foto"}</span>
             ${ph && window.SB && SB.enabled ? `<span class="sync${ph.synced ? " ok" : ""}">${ph.synced ? "Terkirim" : "Antre"}</span>` : ""}
@@ -209,16 +234,17 @@ function render() {
     list.appendChild(el);
   }
   const total = paket.length * 4;
-  const cnt = [...photos.keys()].filter(k => paket.some(p => k.startsWith(p.id + "|"))).length;
+  const cnt = paket.reduce((s, p) => s + ANGLES.filter(a => photos.has(p.id + "|" + a.k)).length, 0);
+  const anyPhoto = [...photos.keys()].some(k => paket.some(p => k.startsWith(p.id + "|")));
   $("tCount").textContent = cnt; $("tTotal").textContent = total;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
   renderCloud(); renderFix();
-  $("zipBtn").disabled = cnt === 0;
+  $("zipBtn").disabled = !anyPhoto;
   const kurang = paket.filter(p => ANGLES.some(a => !photos.has(p.id + "|" + a.k))).length;
   $("dockMsg").textContent = !profil.nama
     ? "Isi dulu nama sekolah dan NPSN, lalu ketuk kotak foto untuk membuka kamera."
-    : cnt === 0 ? "Ketuk kotak foto untuk membuka kamera. Foto langsung diberi cap identitas."
-    : kurang ? `${kurang} menu paket belum lengkap 4 foto. Laporan tidak dapat dikirim bila ada yang kurang.`
+    : !anyPhoto ? "Ketuk kotak foto untuk membuka kamera. Foto langsung diberi cap identitas."
+    : kurang ? `${kurang} menu paket belum lengkap 4 foto wajib bangunan. Laporan tidak dapat dikirim bila ada yang kurang.`
     : "Semua menu paket lengkap. Unduh lalu unggah ke tab Foto Kondisi Awal.";
 }
 
@@ -237,7 +263,7 @@ $("optGuide").addEventListener("change", e => {
 let guideKey = null;
 function showGuide(k, withCamera) {
   const [pid, ak] = k.split("|");
-  const p = paket.find(q => q.id === pid), a = ANGLES.find(q => q.k === ak);
+  const p = paket.find(q => q.id === pid), a = angleOf(ak);
   guideKey = k;
   $("gEyebrow").textContent = `Panduan posisi · ${p.nama}`;
   $("gTitle").textContent = a.l;
@@ -262,7 +288,7 @@ $("list").addEventListener("click", e => {
     const id = d.dataset.del;
     if (d.dataset.armed) {
       paket = paket.filter(p => p.id !== id);
-      ANGLES.forEach(a => { const k = id + "|" + a.k; photos.delete(k); dbPut(k, null); });
+      ALL_ANGLES.forEach(a => { const k = id + "|" + a.k; photos.delete(k); dbPut(k, null); });
       // Catatan: foto yang sudah terkirim tetap ada di Supabase; hapus manual di dashboard bila perlu.
       saveState(); render();
     } else {
@@ -393,7 +419,7 @@ $("fixBtn").addEventListener("click", async () => {
   for (const k of keys) {
     const ph = photos.get(k);
     const [pid, ak] = k.split("|");
-    const p = paket.find(q => q.id === pid), a = ANGLES.find(q => q.k === ak);
+    const p = paket.find(q => q.id === pid), a = angleOf(ak);
     try {
       const src = ph.orig || ph.blob;
       const img = await createImageBitmap(src);
@@ -412,7 +438,7 @@ $("fixBtn").addEventListener("click", async () => {
 let pending = null; // {key, rec, url}
 const labelOf = k => {
   const [pid, ak] = k.split("|");
-  const p = paket.find(q => q.id === pid), a = ANGLES.find(q => q.k === ak);
+  const p = paket.find(q => q.id === pid), a = angleOf(ak);
   return p && a ? `${a.l} ${p.nama}` : k;
 };
 $("picker").addEventListener("change", async e => {
@@ -420,15 +446,16 @@ $("picker").addEventListener("change", async e => {
   if (!f || !target) return;
   const key = target;
   const [pid, ak] = key.split("|");
-  const p = paket.find(q => q.id === pid), a = ANGLES.find(q => q.k === ak);
+  const p = paket.find(q => q.id === pid), a = angleOf(ak);
   try {
     toast("Memeriksa foto…");
     const img = await loadImage(f);
     const info = KKA.analyze(img);
     const takenAt = takenTime(f);
     const gps = currentGps();
+    // Foto kembar diperiksa dalam paket yang sama (beberapa ruang kelas bisa berada di gedung yang sama)
     const others = [...photos.entries()]
-      .filter(([k, ph]) => k !== key && paket.some(q => k.startsWith(q.id + "|")))
+      .filter(([k, ph]) => k !== key && k.startsWith(pid + "|"))
       .map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
     const checks = KKA.runChecks({ info, takenAt, gps, others });
     const res = await stamp(img, takenAt, gps, p, a);
@@ -442,12 +469,16 @@ $("picker").addEventListener("change", async e => {
 });
 function showReview(p, a, checks) {
   const nWarn = checks.filter(c => !c.ok).length;
+  const blocked = checks.some(c => c.block);
+  pending.blocked = blocked;
   $("rTitle").textContent = `${a.l} — ${p.nama}`;
   $("rImg").src = pending.url;
   $("rChecks").innerHTML = checks
     .sort((x, y) => x.ok - y.ok)
-    .map(c => `<li class="${c.ok ? "" : "w"}">${esc(c.text)}</li>`).join("");
+    .sort((x, y) => (y.block ? 1 : 0) - (x.block ? 1 : 0))
+    .map(c => `<li class="${c.ok ? "" : "w"}${c.block ? " b" : ""}">${esc(c.text)}</li>`).join("");
   // Bila ada peringatan, tombol utama menjadi "Ambil ulang"
+  $("rSave").hidden = blocked;
   $("rSave").textContent = nWarn ? "Tetap simpan" : "Simpan foto";
   $("rSave").className = "btn" + (nWarn ? "" : " primary");
   $("rRetake").className = "btn" + (nWarn ? " primary" : "");
@@ -460,7 +491,7 @@ function closeReview() {
   if (pending) { URL.revokeObjectURL(pending.url); pending = null; }
 }
 $("rSave").addEventListener("click", () => {
-  if (!pending) return;
+  if (!pending || pending.blocked) return;
   const { key, rec, url } = pending;
   const old = photos.get(key);
   if (old) URL.revokeObjectURL(old.url);
@@ -479,7 +510,7 @@ $("rCancel").addEventListener("click", closeReview);
 /* Contoh: 2026-11-03 09.12 - Kelas 1 - Tampak Depan.jpg */
 function fname(k) {
   const [pid, ak] = k.split("|");
-  const p = paket.find(q => q.id === pid), a = ANGLES.find(q => q.k === ak), ph = photos.get(k);
+  const p = paket.find(q => q.id === pid), a = angleOf(ak), ph = photos.get(k);
   return `${tgl(ph.t)} ${jam(ph.t)} - ${clean(p.nama)} - ${a.l}.jpg`;
 }
 function download(filename, blob) {
@@ -506,7 +537,7 @@ $("zipBtn").onclick = async () => {
   const rootName = `Foto Kondisi Awal - ${clean(profil.nama || "Sekolah")}`;
   const entries = []; let first = Infinity;
   for (const p of paket) {
-    for (const a of ANGLES) {
+    for (const a of ALL_ANGLES) {
       const k = p.id + "|" + a.k, ph = photos.get(k);
       if (!ph) continue;
       first = Math.min(first, ph.t);
@@ -532,7 +563,7 @@ async function syncAll(manual) {
   for (const [k, ph] of photos) {
     if (ph.synced) continue;
     const [pid, ak] = k.split("|");
-    const p = paket.find(q => q.id === pid), a = ANGLES.find(q => q.k === ak);
+    const p = paket.find(q => q.id === pid), a = angleOf(ak);
     if (!p || !a) continue;
     const path = `${schoolFolder()}/${clean(p.nama)}/${fname(k)}`;
     try {

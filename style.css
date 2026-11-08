@@ -86,6 +86,10 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .chk input{width:18px;height:18px;accent-color:var(--accent)}
 .ver{font-family:var(--f-mono);font-size:12px;color:var(--muted);margin:0;text-align:center}
 .warnb{position:absolute;right:6px;top:6px;font-size:11px;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--warn);color:#fff}
+.slot.extra{background:var(--slot)}
+.slot.extra .slab span:first-child::after{content:" · tambahan";font-weight:400;color:var(--muted);font-size:12px}
+.slot.legacy .slab span:first-child::after{content:""}
+.slot.legacy .shot{border-color:var(--warn)}
 .slab .gbtn{border:0;background:none;color:var(--sky);padding:0;text-decoration:underline;text-underline-offset:2px}
 
 /* Lembar panduan & tinjau */
@@ -103,6 +107,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .g-gap{stroke:var(--slot);stroke-width:5}
 .g-door{stroke:var(--sky);stroke-width:5;stroke-linecap:round}
 .g-cone{fill:var(--accent);fill-opacity:.35;stroke:var(--accent);stroke-width:1.5}
+.g-diag{stroke:var(--ink);stroke-width:1.5;stroke-dasharray:4 3}
 .g-cam{fill:var(--accent);stroke:var(--ink);stroke-width:2}
 .g-lbl{fill:var(--ink);font:700 11px var(--f-body);letter-spacing:.06em}
 .g-small{font-weight:500;font-size:10px;fill:var(--muted);letter-spacing:0}
@@ -114,6 +119,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .checks li{display:grid;grid-template-columns:22px 1fr;gap:6px;align-items:start}
 .checks li::before{content:"✓";font-weight:800;color:var(--ok);text-align:center}
 .checks li.w::before{content:"!";color:#fff;background:var(--warn);border-radius:50%;width:18px;height:18px;line-height:18px;font-size:12px;margin-top:1px}
+.checks li.b{color:var(--warn);font-weight:700}
 .checks li.w{color:var(--ink);font-weight:500}
 .btn.ghost{background:none;color:var(--muted)}
 

@@ -30,7 +30,25 @@
        <text class="g-lbl" x="88" y="79" text-anchor="middle">BANGUNAN</text>
        <text class="g-lbl g-small" x="88" y="124" text-anchor="middle">pintu</text>
        <circle class="g-cam" cx="218" cy="75" r="7"/><text class="g-lbl g-you" x="218" y="98" text-anchor="middle">ANDA</text>`),
-    dalam: svgWrap(
+    serongkanan: svgWrap(
+      `<polygon class="g-cone" points="214,136 70,70 176,4"/>
+       <rect class="g-bld" x="34" y="20" width="140" height="54" rx="2"/>
+       <line class="g-door" x1="88" y1="74" x2="120" y2="74"/>
+       <text class="g-lbl" x="104" y="51" text-anchor="middle">BANGUNAN</text>
+       <text class="g-lbl g-small" x="104" y="88" text-anchor="middle">pintu (depan)</text>
+       <line class="g-diag" x1="174" y1="74" x2="214" y2="114"/>
+       <text class="g-lbl g-small" x="196" y="84">45°</text>
+       <circle class="g-cam" cx="214" cy="120" r="7"/><text class="g-lbl g-you" x="214" y="143" text-anchor="middle">ANDA</text>`),
+    serongkiri: svgWrap(
+      `<polygon class="g-cone" points="26,136 170,70 64,4"/>
+       <rect class="g-bld" x="66" y="20" width="140" height="54" rx="2"/>
+       <line class="g-door" x1="120" y1="74" x2="152" y2="74"/>
+       <text class="g-lbl" x="136" y="51" text-anchor="middle">BANGUNAN</text>
+       <text class="g-lbl g-small" x="136" y="88" text-anchor="middle">pintu (depan)</text>
+       <line class="g-diag" x1="66" y1="74" x2="26" y2="114"/>
+       <text class="g-lbl g-small" x="30" y="84">45°</text>
+       <circle class="g-cam" cx="26" cy="120" r="7"/><text class="g-lbl g-you" x="26" y="143" text-anchor="middle">ANDA</text>`),
+    ruang: svgWrap(
       `<rect class="g-room" x="40" y="10" width="160" height="128" rx="2"/>
        <polygon class="g-cone" points="54,124 132,10 200,10 200,72"/>
        <line class="g-gap" x1="62" y1="138" x2="92" y2="138"/>
@@ -40,7 +58,8 @@
   };
 
   const COMMON = [
-    "Miringkan HP (landscape) dan pegang dengan dua tangan.",
+    "WAJIB landscape: miringkan HP (horizontal). Foto portrait (tegak) tidak diterima.",
+    "Ambil siang hari dengan cahaya alami yang terang.",
     "Jangan pakai zoom. Mundur atau maju sampai objek pas di layar.",
     "Pastikan tidak ada orang atau siswa yang menutupi bangunan.",
   ];
@@ -59,15 +78,31 @@
         "Tampilkan kerusakan yang ada: retak, jamur, talang, atau atap bocor.",
       ],
     },
+    serongkanan: {
+      tips: [
+        "Berdiri di depan-kanan bangunan, segaris diagonal dengan pojok depan kanan (±45°).",
+        "Dinding depan dan dinding samping kanan terlihat bersamaan; pojok bangunan di tengah foto.",
+        "Mundur sampai seluruh bangunan dan atap masuk bingkai.",
+      ],
+    },
+    serongkiri: {
+      tips: [
+        "Berdiri di depan-kiri bangunan, segaris diagonal dengan pojok depan kiri (±45°).",
+        "Dinding depan dan dinding samping kiri terlihat bersamaan; pojok bangunan di tengah foto.",
+        "Mundur sampai seluruh bangunan dan atap masuk bingkai.",
+      ],
+    },
     samping: {
       tips: [
+        "Slot ini dari versi lama. Ambil ulang foto ini di slot Serong Kanan 45° atau Serong Kiri 45°.",
         "Berdiri di ujung bangunan (kiri atau kanan).",
         "Dinding samping terlihat dari ujung ke ujung, beserta atap dan pondasi.",
         "Ambil sisi yang kerusakannya paling terlihat.",
       ],
     },
-    dalam: {
+    ruang: {
       tips: [
+        "Foto tambahan, tidak termasuk 4 foto wajib bangunan.",
         "Masuk ke ruangan, berdiri di pojok dekat pintu.",
         "Arahkan diagonal ke pojok seberang: lantai, dinding, dan plafon masuk satu foto.",
         "Nyalakan lampu atau buka jendela bila ruangan gelap.",
@@ -151,13 +186,13 @@
     oldPhoto: 2 * 36e5, // 2 jam
   };
 
-  /* Hasil: [{ok:boolean, text}] — ok:false berarti peringatan */
+  /* Hasil: [{ok:boolean, text, block?}] — ok:false = peringatan; block:true = tidak boleh disimpan */
   function runChecks({ info, takenAt, gps, others }) {
     const out = [];
-    const add = (ok, text) => out.push({ ok, text });
+    const add = (ok, text, block) => out.push({ ok, text, block: !!block });
 
-    // 1. Orientasi
-    if (info.h > info.w) add(false, "Foto portrait. Dianjurkan landscape (HP dimiringkan) agar seluruh objek masuk.");
+    // 1. Orientasi — wajib landscape sesuai ketentuan Form Unggah Dokumentasi 0%
+    if (info.h > info.w) add(false, "Foto portrait (tegak) tidak diperkenankan. Miringkan HP (landscape) lalu ambil ulang.", true);
     else add(true, "Landscape");
 
     // 2. Ketajaman
