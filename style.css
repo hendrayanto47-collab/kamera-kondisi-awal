@@ -187,3 +187,30 @@ html.vf-open, html.vf-open body{overflow:hidden}
 .dockbtns{display:flex;gap:8px;flex-wrap:wrap}
 .vf-ghost{position:fixed;pointer-events:none;opacity:.38;object-fit:cover;transform-origin:center}
 .vf-ghostbtn{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(120px + env(safe-area-inset-bottom,0px))}
+
+/* ---------- Video ---------- */
+.vidblock{display:grid;gap:8px;padding-block:6px 14px;border-bottom:1px solid var(--line);margin-bottom:12px}
+h3.sub{font-family:var(--f-display);font-size:15px;margin:0}
+.mk-sec{flex:0 1 120px!important}
+.vidlist{display:grid;gap:14px}
+.viditem{display:grid;gap:8px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg)}
+.viditem video{width:100%;max-width:100%;aspect-ratio:16/9;background:#000;border-radius:6px}
+.viditem .meta{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;font-size:13px;min-width:0}
+.viditem .meta b{overflow-wrap:anywhere}
+.viditem .meta small{color:var(--muted);font-family:var(--f-mono);font-size:11px}
+.viditem .acts{display:flex;gap:8px;flex-wrap:wrap}
+.vr video{opacity:0;pointer-events:none}
+.vr-canvas{position:fixed;left:50%;top:calc(50% - 60px);transform-origin:center;background:#000}
+.vr-time{font-family:var(--f-mono);font-weight:700;color:#ff6b5b;font-size:15px}
+.vr-rec{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:#e5372a;cursor:pointer;position:relative;transition:transform .1s}
+.vr-rec:active{transform:scale(.94)}
+.vr-rec.on{background:transparent}
+.vr-rec.on::after{content:"";position:absolute;inset:20px;border-radius:5px;background:#e5372a}
+.vf-spacer{visibility:hidden}
+.mk{position:fixed;inset:0;z-index:55;background:rgba(10,12,11,.88);display:grid;place-items:center;padding:16px}
+.mk-card{background:var(--surface);color:var(--ink);border-radius:14px;padding:16px;width:min(560px,100%);display:grid;gap:10px}
+.mk-card canvas{width:100%;height:auto;border-radius:8px;background:#000}
+.mk-meter{width:100%}
+.mk-card p{margin:0;font-size:14px}
+
+.okc{color:var(--ok)!important;font-weight:700}

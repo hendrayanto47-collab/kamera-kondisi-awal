@@ -34,12 +34,27 @@ Dipasang di HP dari **Netlify**, jalan tanpa internet.
 - **Pemberitahuan versi baru** di bagian atas layar saat aplikasi di Netlify diperbarui.
 - **Supabase (opsional, belum aktif)**: cadangan foto otomatis ke internet. Lihat bagian akhir.
 
+
+## Fitur versi 1.5 (dokumentasi 0% sampai selesai)
+
+- **Tab tahap 0% · 25% · 50% · 75% · 100%**: 4 sudut wajib bangunan (depan, serong kanan 45°, serong kiri 45°, belakang) di setiap tahap.
+  Mulai 25%, foto 0% tampil samar di kotak foto dan di layar kamera sebagai acuan posisi. Cap foto menyebut tahapnya.
+- **Kamera dengan arahan langsung** (`camera.js`): landscape, lurus, tegak, stabil, cahaya, GPS → "Posisi pas — jepret sekarang!".
+- **Tab Kegiatan**: foto kegiatan bebas jumlah dengan keterangan, plus **Video**:
+  - *Rekam video di lokasi* (`video.js`): 1280×720, horizon diluruskan otomatis, arahan gerak pelan, cap sekolah/tanggal/jam/GPS tercetak di video, maks. 5 menit.
+  - *Video laporan otomatis*: disusun dari foto (perbandingan 0% → 100% per ruang, satu tahap, atau foto kegiatan) dengan judul & label tahap.
+- **Unggah ke Drive**: membuka menu Bagikan bawaan HP → pilih Drive → pilih folder. Tidak masuk galeri.
+
+Kunci data: foto 0% `paket|sudut` (sama dengan versi lama), tahap lain `@50|paket|sudut`, kegiatan `#keg|id`, video `#vid|id`.
+
 ## Isi folder
 
 | File | Fungsi |
 |---|---|
 | `index.html`, `style.css` | Halaman & tampilan |
 | `app.js` | Alur utama: kamera, cap foto, penyimpanan di HP, ZIP, pembaruan. `APP_VERSION` & `DEFAULT_PAKET` ada di sini |
+| `camera.js` | Kamera langsung dengan arahan & sensor kemiringan |
+| `video.js` | Rekam video di lokasi & video laporan otomatis |
 | `check.js` | Panduan posisi + pemeriksaan foto. Ambang batas di `LIMIT` |
 | `zip.js` | Pembuat file ZIP |
 | `sw.js` | Agar jalan offline & bisa diperbarui. `VERSION` ada di sini |

@@ -92,6 +92,30 @@
     <div class="keglist" id="kegList"></div>
   </section>
 
+  <section class="panel" id="vidSec" aria-labelledby="hVid" hidden>
+    <h2 id="hVid">Video</h2>
+    <div class="vidblock">
+      <h3 class="sub">Rekam video di lokasi</h3>
+      <div class="add">
+        <label class="f">Judul video<input type="text" id="vidTitle" list="vidTitleList" placeholder="mis. Keliling bangunan – kondisi awal 0%" autocomplete="off"></label>
+        <datalist id="vidTitleList"></datalist>
+        <button class="btn primary" id="vidRec" type="button">Rekam video</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="vidAudio" checked> Rekam suara (untuk narasi)</label>
+      <p class="hint">HP dimiringkan (landscape), mulai dari tampak depan, berjalan pelan memutari bangunan: serong kanan, samping, belakang, serong kiri, kembali ke depan. Durasi 1–3 menit (maks. 5 menit). Horizon diluruskan otomatis; cap sekolah, tanggal, jam, dan GPS tercetak di video.</p>
+    </div>
+    <div class="vidblock">
+      <h3 class="sub">Video laporan otomatis dari foto</h3>
+      <div class="add">
+        <label class="f">Isi video<select id="mkScope"></select></label>
+        <label class="f mk-sec">Detik per foto<select id="mkSec"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
+        <button class="btn" id="mkBtn" type="button">Buat video laporan</button>
+      </div>
+      <p class="hint" id="mkEst"></p>
+    </div>
+    <div class="vidlist" id="vidList"></div>
+  </section>
+
   <section class="panel" id="addSec" aria-labelledby="hAdd">
     <h2 id="hAdd">Tambah menu paket</h2>
     <div class="add">
@@ -175,6 +199,30 @@
     <button class="vf-btn vf-ghostbtn" id="vfGhostBtn" type="button" hidden>Acuan 0%<br>tampil</button>
   </div>
 </div>
+<div class="vf vr" id="vr" hidden role="dialog" aria-modal="true" aria-label="Rekam video">
+  <video id="vrVideo" playsinline muted autoplay></video>
+  <canvas id="vrCanvas" class="vr-canvas"></canvas>
+  <div class="vf-hint" id="vrHint" data-turn="0" aria-live="polite">
+    <b id="vrTitle"></b>
+    <span class="vf-msg" id="vrMsg"></span>
+    <span class="vf-chips" id="vrChips"></span>
+    <span class="vr-time" id="vrTime" hidden></span>
+  </div>
+  <div class="vf-bar">
+    <button class="vf-btn" id="vrClose" type="button">Tutup</button>
+    <button class="vr-rec" id="vrRec" type="button" aria-label="Mulai merekam"></button>
+    <span class="vf-btn vf-spacer" aria-hidden="true"></span>
+  </div>
+</div>
+<div class="mk" id="mk" hidden role="dialog" aria-modal="true" aria-label="Membuat video laporan">
+  <div class="mk-card">
+    <canvas id="mkCanvas"></canvas>
+    <div class="meter mk-meter"><i id="mkBar"></i></div>
+    <p id="mkMsg">Menyiapkan…</p>
+    <button class="btn ghost" id="mkCancel" type="button">Batalkan</button>
+  </div>
+</div>
+<input type="file" id="vidPicker" accept="video/*" capture="environment" hidden>
 <input type="file" id="picker" accept="image/*" capture="environment" hidden>
 <div class="toast" id="toast" hidden></div>
 
@@ -183,6 +231,7 @@
 <script src="zip.js"></script>
 <script src="check.js"></script>
 <script src="camera.js"></script>
+<script src="video.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.4.0 · 8 Nov 2026";
+const APP_VERSION = "1.5.0 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -72,6 +72,12 @@ let profil = { ...DEFAULT_PROFIL };
    path    : lokasi file di bucket Supabase
    prevPath: file lama di Supabase yang perlu dihapus setelah foto diulang */
 const photos = new Map();
+/* Video: "#vid|<id>" -> {blob, t, dur, title, mime, ext, up, url} (disimpan di IndexedDB yang sama) */
+const videos = new Map();
+function persistVid(k) {
+  const v = videos.get(k); if (!v) return dbPut(k, null);
+  dbPut(k, { blob: v.blob, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, kind: "video" });
+}
 const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "synced", "path", "prevPath"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
@@ -121,7 +127,8 @@ function dbLoad() {
           try { c.delete(); } catch (e) {}
           if (v && v.blob) dbPut(key, v);
         }
-        if (v && v.blob) photos.set(key, { ...v, t: v.t || Date.now(), url: URL.createObjectURL(v.blob) });
+        if (v && v.blob && typeof key === "string" && key.startsWith("#vid|")) videos.set(key, { ...v });
+        else if (v && v.blob) photos.set(key, { ...v, t: v.t || Date.now(), url: URL.createObjectURL(v.blob) });
         c.continue();
       };
       rq.onerror = () => res();
@@ -237,7 +244,7 @@ function renderTabs() {
     return `<button type="button" role="tab" data-view="${st}" aria-selected="${view === st}" class="tab${view === st ? " on" : ""}${n === total && total ? " full" : ""}">
       <b>${st}%</b><small>${n}/${total}</small></button>`;
   }).join("") + `<button type="button" role="tab" data-view="keg" aria-selected="${view === "keg"}" class="tab keg${view === "keg" ? " on" : ""}">
-      <b>Kegiatan</b><small>${kegKeys().length} foto</small></button>`;
+      <b>Kegiatan</b><small>${kegKeys().length} foto${videos.size ? " · " + videos.size + " vid" : ""}</small></button>`;
 }
 $("tabs").addEventListener("click", e => {
   const b = e.target.closest("[data-view]"); if (!b) return;
@@ -249,9 +256,9 @@ $("tabs").addEventListener("click", e => {
 function render() {
   renderTabs();
   const isKeg = view === "keg";
-  $("list").hidden = isKeg; $("kegSec").hidden = !isKeg; $("addSec").hidden = isKeg;
+  $("list").hidden = isKeg; $("kegSec").hidden = !isKeg; $("vidSec").hidden = !isKeg; $("addSec").hidden = isKeg;
   $("eyebrowStage").textContent = isKeg ? "Dokumentasi kegiatan" : stageName(view);
-  if (isKeg) renderKeg(); else renderPaket(view);
+  if (isKeg) { renderKeg(); renderVid(); } else renderPaket(view);
   renderCloud(); renderFix();
 }
 
@@ -437,6 +444,120 @@ $("aBtn").addEventListener("click", () => {
   const item = { id, nama: nm, grup };
   idx < 0 ? paket.push(item) : paket.splice(idx + 1, 0, item);
   $("aNama").value = ""; saveState(); render(); toast("Paket " + nm + " ditambahkan");
+});
+
+// ---------- Video ----------
+const fmtDur = s => `${Math.floor(s / 60)}:${two(Math.round(s % 60))}`;
+const idLine = () => [profil.nama || "-", "NPSN " + (profil.npsn || "-"), profil.wil].filter(Boolean).join("  ·  ");
+const vidName = (k) => { const v = videos.get(k); return `${tgl(v.t)} ${jam(v.t)} - Video - ${clean(v.title || "Dokumentasi")}.${v.ext || "mp4"}`; };
+$("vidTitleList").innerHTML = [...STAGES.map(st => `Keliling bangunan – ${stageName(st).toLowerCase()}`), "Kegiatan pekerjaan berlangsung", "Serah terima"]
+  .map(t => `<option value="${esc(t)}">`).join("");
+let vidAudio = true;
+try { vidAudio = localStorage.getItem("kka-vaudio") !== "0"; } catch (e) {}
+$("vidAudio").checked = vidAudio;
+$("vidAudio").addEventListener("change", e => { vidAudio = e.target.checked; try { localStorage.setItem("kka-vaudio", vidAudio ? "1" : "0"); } catch (e) {} });
+
+function saveVideo(v) {
+  const k = "#vid|" + Date.now().toString(36);
+  videos.set(k, v); persistVid(k); render();
+  toast(`Video tersimpan (${fmtDur(v.dur || 0)}, ${(v.blob.size / 1048576).toFixed(1)} MB).`);
+}
+function renderVid() {
+  const keys = [...videos.keys()].sort((a, b) => videos.get(b).t - videos.get(a).t);
+  $("vidList").innerHTML = keys.map(k => {
+    const v = videos.get(k);
+    if (!v.url) v.url = URL.createObjectURL(v.blob);
+    return `<div class="viditem"><video src="${v.url}" controls playsinline preload="metadata"></video>
+      <div class="meta"><b>${esc(v.title || "Video")}</b><small>${tgl(v.t)} ${jam(v.t)} · ${fmtDur(v.dur || 0)} · ${(v.blob.size / 1048576).toFixed(1)} MB</small>${v.up ? '<small class="okc">✓ Drive</small>' : ""}</div>
+      <div class="acts"><button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah ke Drive</button>
+      <button class="btn" type="button" data-vdl="${esc(k)}">Unduh</button>
+      <button class="btn ghost" type="button" data-vdel="${esc(k)}">Hapus</button></div></div>`;
+  }).join("");
+  // Pilihan isi video laporan
+  const sel = $("mkScope"), prev = sel.value;
+  const opts = [["cmp", "Perbandingan semua tahap per ruang (0% → 100%)"], ...STAGES.map(st => [String(st), `Hanya foto ${stageName(st)}`]), ["keg", "Foto kegiatan"]];
+  sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+  if (prev) sel.value = prev;
+  updateEstimate();
+}
+$("vidList").addEventListener("click", e => {
+  const sh = e.target.closest("[data-vshare]"), dl = e.target.closest("[data-vdl]"), del = e.target.closest("[data-vdel]");
+  if (sh) {
+    const k = sh.dataset.vshare, v = videos.get(k);
+    const f = new File([v.blob], vidName(k), { type: v.mime || v.blob.type, lastModified: v.t });
+    if (!navigator.canShare || !navigator.canShare({ files: [f] })) return toast("HP/browser ini belum mendukung kirim langsung. Ketuk Unduh, lalu unggah lewat aplikasi Drive.");
+    navigator.share({ files: [f], title: v.title }).then(() => { v.up = Date.now(); persistVid(k); render(); toast("Video dibagikan. Periksa di Google Drive."); })
+      .catch(er => { if (er && er.name !== "AbortError") toast("Gagal membuka menu Bagikan: " + er.message); });
+  }
+  if (dl) { const k = dl.dataset.vdl; download(vidName(k), videos.get(k).blob); }
+  if (del) {
+    if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
+    const k = del.dataset.vdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url);
+    videos.delete(k); dbPut(k, null); render(); toast("Video dihapus.");
+  }
+});
+
+// Rekam video di lokasi
+$("vidRec").addEventListener("click", () => {
+  const title = $("vidTitle").value.trim() || `Keliling bangunan – ${stageName(0).toLowerCase()}`;
+  if (!profil.nama) { toast("Isi nama sekolah dan NPSN dulu."); return; }
+  refreshGps();
+  KKAVid.openRecorder({
+    title, audio: vidAudio, idLine: idLine(), zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
+    onSaved: v => saveVideo({ ...v, title }),
+    onError: m => toast(m),
+    onUnsupported: () => { toast("Perekam di aplikasi tidak didukung HP ini. Memakai kamera video bawaan (tanpa cap)."); $("vidPicker").dataset.title = title; $("vidPicker").value = ""; $("vidPicker").click(); },
+  });
+});
+$("vidPicker").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const v = document.createElement("video"); v.preload = "metadata"; v.src = URL.createObjectURL(f);
+  v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); saveVideo({ blob: f, mime: f.type, ext: (f.name.split(".").pop() || "mp4").toLowerCase(), dur: v.duration || 0, t: takenTime(f), title: e.target.dataset.title || "Video" }); };
+  v.onerror = () => saveVideo({ blob: f, mime: f.type, ext: "mp4", dur: 0, t: takenTime(f), title: e.target.dataset.title || "Video" });
+});
+
+// Video laporan otomatis dari foto
+function reportScenes(scope, sec) {
+  const sc = [];
+  const school = profil.nama || "Sekolah";
+  const head = (kicker, title, lines, d = 3) => sc.push({ type: "title", kicker, title, lines, sec: d });
+  const badgeColor = st => (st === 0 ? "#f0a050" : st === 100 ? "#4cc27e" : "#f2b705");
+  if (scope === "keg") {
+    head("DOKUMENTASI KEGIATAN · REVITALISASI SD 2026", school, [idLine().replace(school + "  ·  ", ""), `${kegKeys().length} foto kegiatan`]);
+    kegKeys().slice().reverse().forEach(k => { const ph = photos.get(k); sc.push({ type: "photo", blob: ph.blob, badge: "KEGIATAN", label: `${ph.cap || ""} · ${tgl(ph.t)}`, sec }); });
+  } else {
+    const stages = scope === "cmp" ? STAGES : [+scope];
+    head("DOKUMENTASI REVITALISASI SD 2026", school, [idLine().replace(school + "  ·  ", ""),
+      scope === "cmp" ? "Perbandingan kondisi per ruang: 0% → 100%" : stageName(+scope)]);
+    for (const p of paket) {
+      const rows = [];
+      for (const a of ALL_ANGLES) {
+        const shots = stages.map(st => [st, photos.get(KEY(p.id, a.k, st))]).filter(([, ph]) => ph);
+        if (shots.length) rows.push([a, shots]);
+      }
+      if (!rows.length) continue;
+      const used = [...new Set(rows.flatMap(([, sh]) => sh.map(([st]) => st + "%")))];
+      head(p.grup.toUpperCase(), p.nama, [`Tahap: ${used.join(" → ")}`], 2);
+      for (const [a, shots] of rows) for (const [st, ph] of shots)
+        sc.push({ type: "photo", blob: ph.blob, badge: st === 0 ? "0% · KONDISI AWAL" : st === 100 ? "100% · SELESAI" : `PROGRES ${st}%`, badgeColor: badgeColor(st), label: `${p.nama} · ${a.l}`, sec });
+    }
+  }
+  head("REVITALISASI SD 2026", school, ["Video dibuat " + new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })], 3);
+  return sc;
+}
+function updateEstimate() {
+  const sc = reportScenes($("mkScope").value || "cmp", +$("mkSec").value);
+  const n = sc.filter(s => s.type === "photo").length, dur = sc.reduce((a, s) => a + s.sec, 0);
+  $("mkEst").textContent = n ? `${n} foto · durasi video ±${fmtDur(dur)}. Pembuatan butuh waktu sama dengan durasinya; biarkan layar menyala.`
+    : "Belum ada foto untuk pilihan ini.";
+  $("mkBtn").disabled = !n;
+}
+$("mkScope").addEventListener("change", updateEstimate);
+$("mkSec").addEventListener("change", updateEstimate);
+$("mkBtn").addEventListener("click", () => {
+  const scope = $("mkScope").value, sc = reportScenes(scope, +$("mkSec").value);
+  const label = scope === "cmp" ? "Video laporan – perbandingan 0% → 100%" : scope === "keg" ? "Video laporan – kegiatan" : `Video laporan – ${stageName(+scope).toLowerCase()}`;
+  KKAVid.makeReport(sc, { onSaved: v => saveVideo({ ...v, title: label }), onError: m => toast(m) });
 });
 
 // ---------- Cap foto ----------

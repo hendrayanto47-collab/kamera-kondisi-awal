@@ -250,4 +250,10 @@
   $("vfNative").addEventListener("click", () => { const o = opts; close(); o.onFallback(""); });
 
   window.KKACam = { supported, open, close, T, _pose: pose, _frameRotation: frameRotation };
+  // Sensor dipakai bersama oleh perekam video
+  window.KKASensor = {
+    start() { grav = null; rot = 0; motionSeen = false; return requestSensors(); },
+    stop() { window.removeEventListener("devicemotion", onMotion); },
+    pose, frameRotation, shake: () => rot, seen: () => motionSeen, T,
+  };
 })();
