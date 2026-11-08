@@ -34,6 +34,9 @@
       <label class="f">Nama sekolah<input type="text" id="pNama" autocomplete="off"></label>
       <label class="f">NPSN<input type="text" id="pNpsn" inputmode="numeric" autocomplete="off"></label>
       <label class="f">Kab./Kota, Provinsi<input type="text" id="pWil" autocomplete="off"></label>
+      <label class="f wide">Alamat lokasi (tercetak di cap)
+        <span class="inrow"><input type="text" id="pAlamat" placeholder="Otomatis dari GPS, mis. Sarang Burung, Kec. Danau Panggang…" autocomplete="off"><button class="mini-btn" id="pAlamatBtn" type="button">Isi dari GPS</button></span></label>
+      <label class="f">Gaya cap foto<select id="pGaya"><option value="lengkap">Lengkap: peta, alamat, Lat/Long</option><option value="ringkas">Ringkas: 3 baris</option></select></label>
       <label class="f">Koordinat sekolah (cadangan)<input type="text" id="pKoor" inputmode="decimal" placeholder="Ketuk untuk mengisi, mis. -2.4xxxx, 115.1xxxx" autocomplete="off"></label>
     </div>
     <div class="gps">
@@ -240,6 +243,7 @@
 <script src="supabase.js"></script>
 <script src="zip.js"></script>
 <script src="check.js"></script>
+<script src="geo.js"></script>
 <script src="camera.js"></script>
 <script src="video.js"></script>
 <script src="app.js"></script>

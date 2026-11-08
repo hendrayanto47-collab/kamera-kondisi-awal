@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.6.0 · 8 Nov 2026";
+const APP_VERSION = "1.7.0 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -165,12 +165,27 @@ function toast(m) {
 }
 
 // ---------- Identitas ----------
-const fmap = { pNama: "nama", pNpsn: "npsn", pWil: "wil", pKoor: "koor" };
+const fmap = { pNama: "nama", pNpsn: "npsn", pWil: "wil", pKoor: "koor", pAlamat: "alamat" };
 for (const [id, k] of Object.entries(fmap)) {
   $(id).value = profil[k] || "";
   $(id).addEventListener("input", e => { profil[k] = e.target.value; saveState(); });
 }
 $("aGrup").innerHTML = GROUPS.map(g => `<option>${g}</option>`).join("");
+$("pGaya").value = profil.gaya || "lengkap";
+$("pGaya").addEventListener("change", e => { profil.gaya = e.target.value; saveState(); toast(e.target.value === "lengkap" ? "Cap lengkap: peta, alamat, Lat/Long, waktu." : "Cap ringkas: 3 baris."); });
+// Alamat otomatis dari GPS / koordinat sekolah (OpenStreetMap), tetap bisa diubah manual
+async function fillAlamat(force) {
+  const g = currentGps(); if (!g) { if (force) toast("Lokasi belum ada. Aktifkan GPS atau isi koordinat sekolah."); return; }
+  if (!force && profil.alamat) return;
+  if (!navigator.onLine) { if (force) toast("Butuh internet untuk mencari alamat."); return; }
+  $("pAlamatBtn").disabled = true;
+  const a = await KKAGeo.reverse(g.lat, g.lng, force);
+  $("pAlamatBtn").disabled = false;
+  if (a) { profil.alamat = a; $("pAlamat").value = a; saveState(); if (force) toast("Alamat diisi dari lokasi."); }
+  else if (force) toast("Alamat belum ditemukan. Ketik manual, mis. Desa Sarang Burung, Kec. Danau Panggang.");
+  KKAGeo.prefetch(g.lat, g.lng);
+}
+$("pAlamatBtn").addEventListener("click", () => fillAlamat(true));
 
 // ---------- GPS ----------
 let fix = null, watchId = null;
@@ -198,6 +213,7 @@ function renderGps() {
   $("gpsBtn").hidden = true; $("gpsRetry").hidden = false;
   if (fix.acc <= KKA.LIMIT.gpsAcc) {
     setGps("on", `GPS ${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)} (±${fix.acc} m)`); showHelp("");
+    if (window.KKAGeo && navigator.onLine && !renderGps.pre) { renderGps.pre = 1; KKAGeo.prefetch(fix.lat, fix.lng); fillAlamat(false); }
   } else {
     setGps("err", `Akurasi rendah ±${fix.acc} m${schoolKoor() ? " · foto memakai koordinat sekolah" : ""}`);
     showHelp(fix.acc >= 500 ? HELP_APPROX : "Tunggu sebentar di area terbuka, jauh dari atap seng, sampai angkanya di bawah ±50 m.");
@@ -231,7 +247,7 @@ function schoolKoor() {
 $("pKoor").addEventListener("change", () => {
   const k = schoolKoor();
   if (profil.koor && !k) toast("Format koordinat belum dikenali. Contoh: -2.486486, 115.135429");
-  else if (k) toast(`Koordinat sekolah tersimpan: ${k.lat.toFixed(6)}, ${k.lng.toFixed(6)}`);
+  else if (k) { toast(`Koordinat sekolah tersimpan: ${k.lat.toFixed(6)}, ${k.lng.toFixed(6)}`); if (window.KKAGeo && navigator.onLine) KKAGeo.prefetch(k.lat, k.lng); }
   renderGps(); render();
 });
 if (navigator.permissions) {
@@ -634,6 +650,14 @@ async function stamp(img, takenAt, gps, p, a, opts = {}) {
   const x = c.getContext("2d");
   x.drawImage(img, 0, 0, W, H);
   const orig = opts.cover ? null : await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+  const when0 = new Date(takenAt);
+  if ((profil.gaya || "lengkap") === "lengkap" && gps && window.KKAGeo) {
+    await stampFull(x, W, H, when0, gps, p, a, opts);
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+    const res = { blob, t: when0.getTime(), lat: gps.lat, lng: gps.lng, acc: gps.acc };
+    if (orig) res.orig = orig;
+    return res;
+  }
 
   /* Cap ringkas: 3 baris, tinggi ±15% foto berapa pun rasionya (4:3, 16:9, 20:9, portrait).
      Ukuran huruf mengikuti sisi TERPENDEK foto agar foto lebar tidak tertutup. */
@@ -688,6 +712,64 @@ function stampCtx(k, cap) {
   const q = parseKey(k);
   if (q.keg) return { p: { nama: cap || "Kegiatan" }, a: { l: "Kegiatan", k: "keg" }, opts: { title: `KEGIATAN — ${(cap || "").toUpperCase()}`, tag: "DOKUMENTASI KEGIATAN" } };
   return { p: paket.find(x => x.id === q.pid), a: angleOf(q.ak), opts: { tag: stageTag(q.st) } };
+}
+
+/* Cap LENGKAP: peta mini + alamat + Lat/Long + Plus Code + waktu + identitas sekolah.
+   Tinggi ±20% foto; ukuran mengikuti sisi terpendek foto. */
+function wrapText(x, text, maxW, maxLines) {
+  const words = String(text).split(/\s+/), out = []; let cur = "";
+  for (const w of words) {
+    const t = cur ? cur + " " + w : w;
+    if (x.measureText(t).width <= maxW || !cur) cur = t; else { out.push(cur); cur = w; }
+  }
+  if (cur) out.push(cur);
+  if (out.length > maxLines) { out.length = maxLines; out[maxLines - 1] += "…"; }
+  return out;
+}
+async function addressFor(gps) {
+  if (profil.alamat && profil.alamat.trim()) return { text: profil.alamat.trim(), exact: true };
+  const found = await Promise.race([KKAGeo.reverse(gps.lat, gps.lng), new Promise(r => setTimeout(() => r(null), 3500))]);
+  return found ? { text: found, exact: true } : { text: profil.wil || "", exact: false };
+}
+async function stampFull(x, W, H, when, gps, p, a, opts) {
+  const u = Math.min(W, H) / 720;
+  const pad = Math.round(12 * u), tFs = Math.round(23 * u), bFs = Math.round(16 * u), lh = Math.round(bFs * 1.38);
+  const ad = await addressFor(gps), addr = ad.text;
+  const pc = KKAGeo.plusCode(gps.lat, gps.lng);
+  const desa = ad.exact ? (addr.split(",")[0] || "").trim() : "";
+  const hari = when.toLocaleDateString("id-ID", { weekday: "long" });
+  const tglTxt = `${hari}, ${two(when.getDate())}/${two(when.getMonth() + 1)}/${when.getFullYear()} ${two(when.getHours())}:${two(when.getMinutes())} ${zoneLabel(when)}`;
+  const coord = `Lat ${gps.lat.toFixed(6)}°  Long ${gps.lng.toFixed(6)}°` + (gps.src === "sekolah" ? "  (koordinat sekolah)" : gps.acc != null ? `  (±${gps.acc} m)` : "");
+  const title = opts.title || `${a.l.toUpperCase()} — ${p.nama.toUpperCase()}`;
+  const tag = (opts.tag || "KONDISI AWAL 0%");
+  // Ukur dulu: peta di kiri setinggi blok teks
+  x.font = `500 ${bFs}px Arial, sans-serif`;
+  const estMapS = Math.round(tFs * 1.2 + lh * 5);
+  const left = pad * 2 + estMapS + Math.round(14 * u), maxW = W - left - pad * 2;
+  const addrLines = wrapText(x, addr || "-", maxW, 2);
+  const body = [...addrLines, `${coord}  ·  ${KKAGeo.shortCode(pc)}${desa ? " " + desa : ""}`, tglTxt,
+    `${profil.nama || "-"} · NPSN ${profil.npsn || "-"} · ${tag} · Revitalisasi SD 2026`];
+  const blockH = Math.round(tFs * 1.2) + lh * body.length;
+  const mapS = blockH;
+  const bandH = blockH + pad * 2, top = H - bandH - pad;
+  // Latar: kotak gelap transparan berujung bulat
+  const bx = pad, bw = W - pad * 2, r = 10 * u;
+  x.save();
+  x.fillStyle = opts.cover ? "rgb(18,20,19)" : "rgba(10,12,11,.76)";
+  if (opts.cover) x.fillRect(0, top - pad, W, H - top + pad);
+  x.beginPath(); x.moveTo(bx + r, top); x.arcTo(bx + bw, top, bx + bw, top + bandH, r); x.arcTo(bx + bw, top + bandH, bx, top + bandH, r);
+  x.arcTo(bx, top + bandH, bx, top, r); x.arcTo(bx, top, bx + bw, top, r); x.closePath(); x.fill();
+  x.restore();
+  await KKAGeo.drawMap(x, bx + pad, top + pad, mapS, gps.lat, gps.lng);
+  const tx = bx + pad + mapS + Math.round(14 * u), tw = bx + bw - pad - tx;
+  x.shadowColor = "rgba(0,0,0,.5)"; x.shadowBlur = 2 * u; x.textAlign = "left";
+  let y = top + pad + tFs;
+  x.font = `800 ${tFs}px Arial, sans-serif`; x.fillStyle = "#f2b705";
+  x.fillText(title, tx, y, tw);
+  y += Math.round(tFs * 0.2);
+  x.font = `500 ${bFs}px Arial, sans-serif`;
+  body.forEach((l, i) => { y += lh; x.fillStyle = i < addrLines.length ? "#ffffff" : "rgba(255,255,255,.88)"; x.fillText(l, tx, y - lh * 0.22, tw); });
+  x.shadowBlur = 0;
 }
 
 // ---------- Cetak ulang cap untuk foto tanpa koordinat ----------
