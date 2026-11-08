@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.8.1 · 8 Nov 2026";
+const APP_VERSION = "1.8.2 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -103,7 +103,15 @@ try {
   const s = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
   if (s) { paket = s.paket || paket; profil = { ...profil, ...s.profil }; trash = s.trash || []; }
 } catch (e) {}
+/* Susun ruang: menurut kelompok (Ruang kelas → Ruang administrasi → Lingkungan → Lainnya),
+   lalu menurut nama dengan angka alami (Kelas 1, Kelas 2, …, Kelas 10). */
+function sortPaket() {
+  const gi = g => { const i = GROUPS.indexOf(g); return i < 0 ? GROUPS.length : i; };
+  paket.sort((a, b) => gi(a.grup) - gi(b.grup) || a.nama.localeCompare(b.nama, "id", { numeric: true, sensitivity: "base" }));
+}
+sortPaket();
 function saveState() {
+  sortPaket();
   try { localStorage.setItem(STORE_KEY, JSON.stringify({ paket, profil, trash })); } catch (e) {}
 }
 
