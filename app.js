@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.7.1 · 8 Nov 2026";
+const APP_VERSION = "1.8.0 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -39,9 +39,15 @@ function parseKey(k) {
 }
 const stageTag = st => (st === 0 ? "KONDISI AWAL 0%" : st === 100 ? "PROGRES 100% (SELESAI)" : `PROGRES ${st}%`);
 const stageName = st => (st === 0 ? "Kondisi Awal 0%" : st === 100 ? "Progres 100% (Selesai)" : `Progres ${st}%`);
-let view = 0; // 0/25/50/75/100 atau "keg"
-try { const v = localStorage.getItem("kka-view"); view = v === "keg" ? "keg" : STAGES.includes(+v) ? +v : 0; } catch (e) {}
-const curStage = () => (view === "keg" ? 0 : view);
+let view = 0;          // tahap yang sedang dibuka di layar Foto
+let screen = "foto";   // foto | kegiatan | video | atur
+try {
+  const v = localStorage.getItem("kka-view");
+  if (v === "keg") screen = "kegiatan"; else if (STAGES.includes(+v)) view = +v;
+  const sc = localStorage.getItem("kka-screen");
+  if (["foto", "kegiatan", "video", "atur"].includes(sc)) screen = sc;
+} catch (e) {}
+const curStage = () => view;
 const KEG_PRESET = ["Rapat persiapan / sosialisasi", "Pembongkaran", "Material datang", "Pekerjaan pondasi",
   "Pekerjaan struktur / kolom", "Pekerjaan dinding", "Pekerjaan atap", "Pekerjaan lantai", "Pekerjaan plafon",
   "Pemasangan pintu & jendela", "Instalasi listrik", "Pengecatan", "Pembersihan", "Serah terima"];
@@ -174,7 +180,7 @@ function toast(m, actLabel, act) {
 const fmap = { pNama: "nama", pNpsn: "npsn", pWil: "wil", pKoor: "koor", pAlamat: "alamat" };
 for (const [id, k] of Object.entries(fmap)) {
   $(id).value = profil[k] || "";
-  $(id).addEventListener("input", e => { profil[k] = e.target.value; saveState(); });
+  $(id).addEventListener("input", e => { profil[k] = e.target.value; saveState(); if (k === "nama" || k === "npsn") renderHeader(); });
 }
 $("aGrup").innerHTML = GROUPS.map(g => `<option>${g}</option>`).join("");
 $("pGaya").value = profil.gaya || "lengkap";
@@ -238,7 +244,12 @@ function refreshGps() {
   if (watchId == null || !("geolocation" in navigator)) return;
   navigator.geolocation.getCurrentPosition(onFix, () => {}, GPS_OPT);
 }
-function setGps(cls, text) { $("gpsDot").className = "dot " + cls; $("gpsText").textContent = text; }
+function setGps(cls, text) {
+  $("gpsDot").className = "dot " + cls; $("gpsText").textContent = text;
+  // Ringkasan di bilah atas
+  $("gpsPillDot").className = "dot " + cls;
+  $("gpsPillTxt").textContent = fix ? `±${fix.acc} m` : cls === "err" ? "GPS !" : "GPS";
+}
 $("gpsBtn").addEventListener("click", startGps);
 $("gpsRetry").addEventListener("click", () => { fix = null; startGps(); });
 
@@ -298,29 +309,52 @@ function renderTabs() {
   const cnt = st => paket.reduce((s, p) => s + ANGLES.filter(a => photos.has(KEY(p.id, a.k, st))).length, 0);
   const total = paket.length * 4;
   $("tabs").classList.toggle("scroll", STAGES.length > 6);
-  $("tabs").style.gridTemplateColumns = STAGES.length > 6 ? "" : `repeat(${STAGES.length},minmax(0,1fr)) minmax(0,1.4fr)`;
+  $("tabs").style.gridTemplateColumns = STAGES.length > 6 ? "" : `repeat(${STAGES.length},minmax(0,1fr))`;
   $("tabs").innerHTML = STAGES.map(st => {
     const n = cnt(st);
     return `<button type="button" role="tab" data-view="${st}" aria-selected="${view === st}" class="tab${view === st ? " on" : ""}${n === total && total ? " full" : ""}">
       <b>${st}%</b><small>${n}/${total}</small></button>`;
-  }).join("") + `<button type="button" role="tab" data-view="keg" aria-selected="${view === "keg"}" class="tab keg${view === "keg" ? " on" : ""}">
-      <b>Kegiatan</b><small>${kegKeys().length} foto${videos.size ? " · " + videos.size + " vid" : ""}</small></button>`;
+  }).join("");
 }
 $("tabs").addEventListener("click", e => {
   const b = e.target.closest("[data-view]"); if (!b) return;
-  view = b.dataset.view === "keg" ? "keg" : +b.dataset.view;
+  view = +b.dataset.view;
   try { localStorage.setItem("kka-view", String(view)); } catch (e) {}
-  render(); window.scrollTo({ top: $("tabs").offsetTop - 8, behavior: "smooth" });
+  render(); window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
+// ---------- Navigasi layar (menu bawah) ----------
+function goScreen(s, focusId) {
+  screen = s;
+  try { localStorage.setItem("kka-screen", s); } catch (e) {}
+  render();
+  if (focusId) setTimeout(() => { const el = $(focusId); el.scrollIntoView({ block: "center", behavior: "smooth" }); el.focus && el.focus(); }, 60);
+  else window.scrollTo({ top: 0 });
+}
+$("bottomNav").addEventListener("click", e => { const b = e.target.closest("[data-screen]"); if (b) goScreen(b.dataset.screen); });
+$("gpsPill").addEventListener("click", () => goScreen("atur", "gpsCard"));
+$("abSchool").addEventListener("click", () => goScreen("atur", "pNama"));
+function renderHeader() {
+  $("abSchool").textContent = profil.nama ? `${profil.nama}${profil.npsn ? " · " + profil.npsn : ""}` : "Isi identitas sekolah di Pengaturan";
+  document.querySelectorAll("#bottomNav [data-screen]").forEach(b => b.setAttribute("aria-current", b.dataset.screen === screen ? "page" : "false"));
+  const nk = kegKeys().length, nv = videos.size;
+  $("bnKeg").hidden = !nk; $("bnKeg").textContent = nk;
+  $("bnVid").hidden = !nv; $("bnVid").textContent = nv;
+}
+
 function render() {
-  renderTabs();
-  const isKeg = view === "keg";
-  $("list").hidden = isKeg; $("kegSec").hidden = !isKeg; $("vidSec").hidden = !isKeg; $("addSec").hidden = isKeg;
-  $("eyebrowStage").textContent = isKeg ? "Dokumentasi kegiatan" : stageName(view);
-  if (isKeg) { renderKeg(); renderVid(); } else renderPaket(view);
-  renderTrash();
+  const sc = screen;
+  $("scrFoto").hidden = sc !== "foto"; $("scrKeg").hidden = sc !== "kegiatan";
+  $("scrVid").hidden = sc !== "video"; $("scrSet").hidden = sc !== "atur";
+  $("tabs").hidden = sc !== "foto";
+  $("sumCard").hidden = !(sc === "foto" || sc === "kegiatan");
+  document.body.dataset.screen = sc;
+  if (sc === "foto") { renderTabs(); $("eyebrowStage").textContent = stageName(view); renderPaket(view); }
+  if (sc === "kegiatan") { $("eyebrowStage").textContent = "Dokumentasi kegiatan"; renderKeg(); }
+  if (sc === "video") renderVid();
+  renderTrash(); renderHeader();
   renderCloud(); renderFix();
+  $("fixBox").hidden = $("fixBox").hidden || sc === "atur";
 }
 
 function renderPaket(st) {
@@ -338,8 +372,8 @@ function renderPaket(st) {
     const el = document.createElement("article");
     el.className = "paket" + (n === 4 ? " done" : "");
     el.innerHTML = `<div class="ph"><h3>${esc(p.nama)}</h3><span class="chip">${n}/4 wajib</span>
-      ${pk.length ? `<button class="mini-btn share" data-share="${esc(p.id)}" type="button">${allUp ? "✓ Drive" : "Unggah ke Drive"}</button>` : ""}
-      <button class="iconbtn" data-del="${esc(p.id)}" type="button" aria-label="Hapus ruang ${esc(p.nama)} dari daftar">Hapus ruang</button></div>
+      <span class="ph-acts">${pk.length ? `<button class="mini-btn share" data-share="${esc(p.id)}" type="button">${allUp ? "✓ Drive" : "Unggah ke Drive"}</button>` : ""}
+      <button class="iconbtn" data-del="${esc(p.id)}" type="button" aria-label="Hapus ruang ${esc(p.nama)} dari daftar">Hapus ruang</button></span></div>
       <div class="slots">${slots.map(a => {
         const k = KEY(p.id, a.k, st), ph = photos.get(k);
         const ref = !ph && st ? photos.get(KEY(p.id, a.k, 0)) : null; // foto 0% sebagai acuan
@@ -359,7 +393,7 @@ function renderPaket(st) {
   const total = paket.length * 4;
   const cnt = paket.reduce((s, p) => s + ANGLES.filter(a => photos.has(KEY(p.id, a.k, st))).length, 0);
   const anyPhoto = stageKeys(st).length > 0;
-  $("tCount").textContent = cnt; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${st}%`;
+  $("tCount").textContent = cnt; $("tOf").hidden = false; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${st}%`;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
   $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto;
   const kurang = paket.filter(p => ANGLES.some(a => !photos.has(KEY(p.id, a.k, st)))).length;
@@ -378,7 +412,7 @@ function renderKeg() {
       <img src="${ph.url}" alt="">${ph.up ? '<span class="sync ok">✓ Drive</span>' : ""}</button>
       <figcaption><b>${esc(ph.cap || "Kegiatan")}</b><small>${tgl(ph.t)} ${jam(ph.t)}</small></figcaption></figure>`;
   }).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
-  $("tCount").textContent = keys.length; $("tTotal").textContent = "—"; $("tUnit").textContent = "foto kegiatan";
+  $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
   $("tBar").style.width = keys.length ? "100%" : "0";
   $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length;
   $("dockMsg").textContent = keys.length ? `${keys.length} foto kegiatan. Ketuk Unggah ke Drive untuk mengirim semuanya.`
@@ -584,7 +618,8 @@ function renderVid() {
   $("vidTitleList").innerHTML = [...STAGES.map(st => `Keliling bangunan – ${stageName(st).toLowerCase()}`), "Kegiatan pekerjaan berlangsung", "Serah terima"]
     .map(t => `<option value="${esc(t)}">`).join("");
   const keys = [...videos.keys()].sort((a, b) => videos.get(b).t - videos.get(a).t);
-  $("vidList").innerHTML = keys.map(k => {
+  $("vidList").innerHTML = keys.length ? "" : `<p class="hint empty">Belum ada video. Rekam di lokasi atau buat video laporan dari foto.</p>`;
+  $("vidList").innerHTML += keys.map(k => {
     const v = videos.get(k);
     if (!v.url) v.url = URL.createObjectURL(v.blob);
     return `<div class="viditem"><video src="${v.url}" controls playsinline preload="metadata"></video>
@@ -851,9 +886,7 @@ function renderFix() {
   $("fixFill").hidden = !!sk;
   $("fixBtn").textContent = `Cetak koordinat sekolah ke ${n} foto`;
 }
-$("fixFill").addEventListener("click", () => {
-  $("pKoor").scrollIntoView({ block: "center" }); $("pKoor").focus();
-});
+$("fixFill").addEventListener("click", () => goScreen("atur", "pKoor"));
 // Tombol cetak langsung aktif begitu koordinat valid diketik (tanpa harus keluar dari kolom)
 $("pKoor").addEventListener("input", () => renderFix());
 $("fixBtn").addEventListener("click", async () => {
@@ -1009,13 +1042,13 @@ $("vDel").onclick = () => {
 
 /* ZIP: Foto Kondisi Awal - <Sekolah>/<Nama paket>/<tanggal jam - paket - sudut>.jpg */
 function viewKeys() {
-  if (view === "keg") return kegKeys();
+  if (screen === "kegiatan") return kegKeys();
   const out = [];
   for (const p of paket) for (const a of ALL_ANGLES) { const k = KEY(p.id, a.k, view); if (photos.has(k)) out.push(k); }
   return out;
 }
 $("zipBtn").onclick = async () => {
-  const rootName = view === "keg" ? `Foto Kegiatan - ${clean(profil.nama || "Sekolah")}`
+  const rootName = screen === "kegiatan" ? `Foto Kegiatan - ${clean(profil.nama || "Sekolah")}`
     : view === 0 ? `Foto Kondisi Awal - ${clean(profil.nama || "Sekolah")}` : `Foto Progres ${view}% - ${clean(profil.nama || "Sekolah")}`;
   const entries = []; let first = Infinity;
   for (const k of viewKeys()) {
@@ -1044,7 +1077,7 @@ function shareKeys(keys, title) {
     render(); toast(`${keys.length} foto dibagikan. Periksa di Google Drive.`);
   }).catch(e => { if (e && e.name !== "AbortError") toast("Gagal membuka menu Bagikan: " + e.message); });
 }
-$("shareAllBtn").onclick = () => shareKeys(viewKeys(), view === "keg" ? "Foto kegiatan" : stageName(view));
+$("shareAllBtn").onclick = () => shareKeys(viewKeys(), screen === "kegiatan" ? "Foto kegiatan" : stageName(view));
 
 // ---------- Sinkronisasi Supabase ----------
 /* Folder di bucket: "<NPSN> - <Nama Sekolah>/<Nama paket>/<tanggal jam - paket - sudut>.jpg" */

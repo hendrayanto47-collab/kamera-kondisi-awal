@@ -14,137 +14,168 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <div>
-      <p class="eyebrow">Revitalisasi SD 2026 · <span id="eyebrowStage">Kondisi Awal 0%</span></p>
-      <h1>Kamera Revitalisasi SD</h1>
-    </div>
-    <div>
-      <div class="tally"><b id="tCount">0</b> / <span id="tTotal">0</span> <span id="tUnit">foto wajib</span></div>
-      <div class="meter"><i id="tBar"></i></div>
-    </div>
-  </header>
-
-  <button class="install" id="installBtn" type="button" hidden>Pasang aplikasi di HP</button>
-
-  <section class="panel" aria-labelledby="hProfil">
-    <h2 id="hProfil">Identitas di cap foto</h2>
-    <div class="fields">
-      <label class="f">Nama sekolah<input type="text" id="pNama" autocomplete="off"></label>
-      <label class="f">NPSN<input type="text" id="pNpsn" inputmode="numeric" autocomplete="off"></label>
-      <label class="f">Kab./Kota, Provinsi<input type="text" id="pWil" autocomplete="off"></label>
-      <label class="f wide">Alamat lokasi (tercetak di cap)
-        <span class="inrow"><input type="text" id="pAlamat" placeholder="Otomatis dari GPS, mis. Sarang Burung, Kec. Danau Panggang…" autocomplete="off"><button class="mini-btn" id="pAlamatBtn" type="button">Isi dari GPS</button></span></label>
-      <label class="f">Gaya cap foto<select id="pGaya"><option value="lengkap">Lengkap: peta, alamat, Lat/Long</option><option value="ringkas">Ringkas: 3 baris</option></select></label>
-      <label class="f">Koordinat sekolah (cadangan)<input type="text" id="pKoor" inputmode="decimal" placeholder="Ketuk untuk mengisi, mis. -2.4xxxx, 115.1xxxx" autocomplete="off"></label>
-    </div>
-    <div class="gps">
-      <span class="dot" id="gpsDot"></span>
-      <span id="gpsText">GPS belum aktif</span>
-      <button class="mini-btn" id="gpsBtn" type="button">Aktifkan GPS</button>
-      <button class="mini-btn" id="gpsRetry" type="button" hidden>Cari ulang</button>
-    </div>
-    <p class="hint" id="gpsHelp" hidden></p>
-    <div class="fixbox" id="fixBox" hidden>
-      <p id="fixText"></p>
-      <button class="btn primary" id="fixBtn" type="button"></button>
-      <button class="btn" id="fixFill" type="button" hidden>Isi koordinat sekolah</button>
-    </div>
-    <p class="hint">Isian di atas, nama paket, sudut, tanggal, jam, dan koordinat tercetak di bagian bawah setiap foto.
-      Bila GPS HP tidak akurat, aplikasi memakai <b>koordinat sekolah</b> (lintang, bujur dari Dapodik atau Google Maps) dan menandainya di cap foto.</p>
-  </section>
-
-  <section class="panel" id="cloudPanel" aria-labelledby="hCloud" hidden>
-    <h2 id="hCloud">Kirim ke Supabase</h2>
-    <form id="loginForm" class="add">
-      <label class="f">Email<input type="email" id="sbEmail" autocomplete="username" required></label>
-      <label class="f">Kata sandi<input type="password" id="sbPass" autocomplete="current-password" required></label>
-      <button class="btn" id="sbLogin" type="submit">Masuk</button>
-    </form>
-    <div id="loggedIn" class="gps" hidden>
-      <span class="dot on"></span>
-      <span id="sbUser"></span>
-      <button class="mini-btn" id="sbSync" type="button">Kirim sekarang</button>
-      <button class="mini-btn" id="sbOut" type="button">Keluar</button>
-    </div>
-    <p class="hint" id="sbHint">Masuk sekali saja. Foto otomatis terkirim saat ada internet; tanpa sinyal, foto menunggu di antrean.</p>
-  </section>
-
-  <ul class="rules" aria-label="Ketentuan">
-    <li>4 foto wajib bangunan: depan, serong kanan 45°, serong kiri 45°, belakang</li>
-    <li>Kondisi sebelum pekerjaan dimulai (progres 0%)</li>
-    <li>Wajib landscape, siang hari</li>
-    <li>Foto dikecilkan otomatis ±1920 px</li>
-  </ul>
-  <details class="panel stgpanel" id="stgPanel">
-    <summary>Atur tahap persen</summary>
-    <div class="stgchips" id="stgChips"></div>
-    <div class="add">
-      <label class="f">Tambah tahap (%)<input type="number" id="stgNew" inputmode="numeric" min="1" max="100" step="1" placeholder="mis. 30"></label>
-      <button class="btn" id="stgAdd" type="button">Tambah</button>
-      <button class="btn ghost" id="stgReset" type="button">Kembalikan bawaan</button>
-    </div>
-    <p class="hint">Tahap 0% (kondisi awal) selalu ada. Tahap yang masih berisi foto tidak bisa dihapus. Untuk mengganti, misalnya 25% → 30%: tambah 30%, lalu hapus 25%.</p>
-  </details>
-  <label class="chk"><input type="checkbox" id="optGuide" checked> Tampilkan panduan posisi sebelum memotret</label>
-  <label class="chk"><input type="checkbox" id="optLive" checked> Kamera dengan arahan langsung (landscape, lurus, stabil, cahaya)</label>
-
+<header class="appbar">
+  <div class="ab-in">
+    <img class="ab-logo" src="icons/icon-192.png" alt="">
+    <div class="ab-t"><b>Kamera Revit SD</b><small id="abSchool">Isi identitas sekolah di Pengaturan</small></div>
+    <button class="gpspill" id="gpsPill" type="button" aria-label="Status GPS"><i class="dot" id="gpsPillDot"></i><span id="gpsPillTxt">GPS</span></button>
+  </div>
   <nav class="tabs" id="tabs" role="tablist" aria-label="Tahap dokumentasi"></nav>
+</header>
 
-  <div id="list" class="list"></div>
+<main class="screens">
+    <button class="install" id="installBtn" type="button" hidden>Pasang aplikasi di HP</button>
 
-  <section class="panel" id="kegSec" aria-labelledby="hKeg" hidden>
-    <h2 id="hKeg">Foto kegiatan</h2>
-    <div class="add">
+  <div class="fixbox" id="fixBox" hidden>
+    <p id="fixText"></p>
+    <button class="btn primary" id="fixBtn" type="button"></button>
+    <button class="btn" id="fixFill" type="button" hidden>Isi koordinat sekolah</button>
+  </div>
+
+  <section class="sumcard" id="sumCard" aria-live="polite">
+    <div class="sum-top">
+      <div>
+        <p class="eyebrow" id="eyebrowStage">Kondisi Awal 0%</p>
+        <div class="tally"><b id="tCount">0</b><span id="tOf"> / <span id="tTotal">0</span></span> <span id="tUnit">foto wajib</span></div>
+      </div>
+      <div class="sum-btns">
+        <button class="btn" id="zipBtn" type="button" disabled>ZIP</button>
+        <button class="btn primary" id="shareAllBtn" type="button" disabled>Unggah ke Drive</button>
+      </div>
+    </div>
+    <div class="meter"><i id="tBar"></i></div>
+    <p class="sum-msg" id="dockMsg"></p>
+  </section>
+
+  <!-- ===== Layar: Foto ===== -->
+  <section class="screen" id="scrFoto">
+    <div id="list" class="list"></div>
+  </section>
+
+  <!-- ===== Layar: Kegiatan ===== -->
+  <section class="screen" id="scrKeg" hidden>
+    <section class="card-s" id="kegSec" aria-labelledby="hKeg">
+      <h2 id="hKeg">Foto kegiatan</h2>
       <label class="f">Keterangan kegiatan<input type="text" id="kegCap" list="kegCapList" placeholder="Pilih atau ketik, mis. Pekerjaan atap" autocomplete="off"></label>
       <datalist id="kegCapList"></datalist>
-      <button class="btn primary" id="kegShoot" type="button">Ambil foto kegiatan</button>
-    </div>
-    <p class="hint">Keterangan tercetak di cap foto dan nama file. Jumlah foto bebas.</p>
+      <button class="btn primary big" id="kegShoot" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="4"/></svg> Ambil foto kegiatan</button>
+      <p class="hint">Keterangan tercetak di cap foto dan nama file. Jumlah foto bebas.</p>
+    </section>
     <div class="keglist" id="kegList"></div>
   </section>
 
-  <section class="panel" id="vidSec" aria-labelledby="hVid" hidden>
-    <h2 id="hVid">Video</h2>
-    <div class="vidblock">
-      <h3 class="sub">Rekam video di lokasi</h3>
-      <div class="add">
-        <label class="f">Judul video<input type="text" id="vidTitle" list="vidTitleList" placeholder="mis. Keliling bangunan – kondisi awal 0%" autocomplete="off"></label>
-        <datalist id="vidTitleList"></datalist>
-        <button class="btn primary" id="vidRec" type="button">Rekam video</button>
-      </div>
+  <!-- ===== Layar: Video ===== -->
+  <section class="screen" id="scrVid" hidden>
+    <section class="card-s" id="vidSec" aria-labelledby="hVid">
+      <h2 id="hVid">Rekam video di lokasi</h2>
+      <label class="f">Judul video<input type="text" id="vidTitle" list="vidTitleList" placeholder="mis. Keliling bangunan – kondisi awal 0%" autocomplete="off"></label>
+      <datalist id="vidTitleList"></datalist>
       <label class="chk"><input type="checkbox" id="vidAudio" checked> Rekam suara (untuk narasi)</label>
-      <p class="hint">HP dimiringkan (landscape), mulai dari tampak depan, berjalan pelan memutari bangunan: serong kanan, samping, belakang, serong kiri, kembali ke depan. Durasi 1–3 menit (maks. 5 menit). Horizon diluruskan otomatis; cap sekolah, tanggal, jam, dan GPS tercetak di video.</p>
-    </div>
-    <div class="vidblock">
-      <h3 class="sub">Video laporan otomatis dari foto</h3>
-      <div class="add">
+      <button class="btn primary big" id="vidRec" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/></svg> Rekam video</button>
+      <p class="hint">HP dimiringkan (landscape), mulai dari tampak depan, berjalan pelan memutari bangunan. Durasi 1–3 menit (maks. 5 menit). Horizon diluruskan otomatis; cap sekolah, tanggal, jam, dan GPS tercetak di video.</p>
+    </section>
+    <section class="card-s">
+      <h2>Video laporan dari foto</h2>
+      <div class="row2">
         <label class="f">Isi video<select id="mkScope"></select></label>
-        <label class="f mk-sec">Detik per foto<select id="mkSec"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
-        <button class="btn" id="mkBtn" type="button">Buat video laporan</button>
+        <label class="f mk-sec">Detik/foto<select id="mkSec"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
       </div>
+      <button class="btn big" id="mkBtn" type="button">Buat video laporan</button>
       <p class="hint" id="mkEst"></p>
-    </div>
+    </section>
+    <h2 class="list-h">Video tersimpan</h2>
     <div class="vidlist" id="vidList"></div>
   </section>
 
-  <section class="panel" id="addSec" aria-labelledby="hAdd">
-    <h2 id="hAdd">Tambah / kelola ruang</h2>
-    <div class="add">
-      <label class="f">Nama ruang / paket<input type="text" id="aNama" placeholder="mis. perpustakaan"></label>
-      <label class="f">Kelompok<select id="aGrup"></select></label>
-      <button class="btn" id="aBtn" type="button">Tambah</button>
-    </div>
-    <button class="btn ghost defbtn" id="defBtn" type="button" hidden></button>
-    <div class="trashbox" id="trashBox" hidden>
-      <h3 class="sub">Ruang yang dihapus</h3>
-      <p class="hint">Foto di ruang ini masih tersimpan. Pulihkan untuk menampilkannya lagi.</p>
-      <ul class="trashlist" id="trashList"></ul>
-    </div>
+  <!-- ===== Layar: Pengaturan ===== -->
+  <section class="screen" id="scrSet" hidden>
+    <section class="card-s" aria-labelledby="hProfil">
+      <h2 id="hProfil">Identitas sekolah</h2>
+      <label class="f">Nama sekolah<input type="text" id="pNama" autocomplete="off"></label>
+      <div class="row2">
+        <label class="f">NPSN<input type="text" id="pNpsn" inputmode="numeric" autocomplete="off"></label>
+        <label class="f">Kab./Kota, Provinsi<input type="text" id="pWil" autocomplete="off"></label>
+      </div>
+    </section>
+
+    <section class="card-s" id="gpsCard" aria-labelledby="hGps">
+      <h2 id="hGps">Lokasi & GPS</h2>
+      <div class="gps">
+        <span class="dot" id="gpsDot"></span>
+        <span id="gpsText">GPS belum aktif</span>
+        <button class="mini-btn" id="gpsBtn" type="button">Aktifkan GPS</button>
+        <button class="mini-btn" id="gpsRetry" type="button" hidden>Cari ulang</button>
+      </div>
+      <p class="hint" id="gpsHelp" hidden></p>
+      <label class="f">Alamat lokasi (tercetak di cap)
+        <span class="inrow"><input type="text" id="pAlamat" placeholder="Otomatis dari GPS" autocomplete="off"><button class="mini-btn" id="pAlamatBtn" type="button">Isi dari GPS</button></span></label>
+      <label class="f">Koordinat sekolah (cadangan bila GPS lemah)<input type="text" id="pKoor" inputmode="decimal" placeholder="mis. -2.4xxxx, 115.1xxxx" autocomplete="off"></label>
+    </section>
+
+    <section class="card-s" aria-labelledby="hCam">
+      <h2 id="hCam">Kamera & cap foto</h2>
+      <label class="f">Gaya cap foto<select id="pGaya"><option value="lengkap">Lengkap: peta, alamat, Lat/Long</option><option value="ringkas">Ringkas: 3 baris</option></select></label>
+      <label class="chk"><input type="checkbox" id="optLive" checked> Kamera dengan arahan langsung</label>
+      <label class="chk"><input type="checkbox" id="optGuide" checked> Panduan posisi sebelum memotret</label>
+      <ul class="rules" aria-label="Ketentuan foto">
+        <li>4 foto wajib: depan, serong kanan 45°, serong kiri 45°, belakang</li>
+        <li>Wajib landscape, siang hari</li>
+        <li>Foto dikecilkan otomatis ±1920 px</li>
+      </ul>
+    </section>
+
+    <section class="card-s" id="stgPanel" aria-labelledby="hStg">
+      <h2 id="hStg">Tahap persen</h2>
+      <div class="stgchips" id="stgChips"></div>
+      <div class="inrow">
+        <input type="number" id="stgNew" inputmode="numeric" min="1" max="100" step="1" placeholder="Tambah tahap, mis. 30" aria-label="Tambah tahap persen">
+        <button class="btn" id="stgAdd" type="button">Tambah</button>
+      </div>
+      <button class="btn ghost" id="stgReset" type="button">Kembalikan bawaan 0–25–50–75–100%</button>
+      <p class="hint">0% selalu ada. Tahap yang masih berisi foto tidak bisa dihapus.</p>
+    </section>
+
+    <section class="card-s" id="addSec" aria-labelledby="hAdd">
+      <h2 id="hAdd">Ruang / menu paket</h2>
+      <div class="row2">
+        <label class="f">Nama ruang baru<input type="text" id="aNama" placeholder="mis. Perpustakaan"></label>
+        <label class="f">Kelompok<select id="aGrup"></select></label>
+      </div>
+      <button class="btn" id="aBtn" type="button">Tambah ruang</button>
+      <button class="btn ghost defbtn" id="defBtn" type="button" hidden></button>
+      <div class="trashbox" id="trashBox" hidden>
+        <h3 class="sub">Ruang yang dihapus</h3>
+        <p class="hint">Foto di ruang ini masih tersimpan. Pulihkan untuk menampilkannya lagi.</p>
+        <ul class="trashlist" id="trashList"></ul>
+      </div>
+    </section>
+
+    <section class="card-s" id="cloudPanel" aria-labelledby="hCloud" hidden>
+      <h2 id="hCloud">Kirim ke Supabase</h2>
+      <form id="loginForm" class="add">
+        <label class="f">Email<input type="email" id="sbEmail" autocomplete="username" required></label>
+        <label class="f">Kata sandi<input type="password" id="sbPass" autocomplete="current-password" required></label>
+        <button class="btn" id="sbLogin" type="submit">Masuk</button>
+      </form>
+      <div id="loggedIn" class="gps" hidden>
+        <span class="dot on"></span>
+        <span id="sbUser"></span>
+        <button class="mini-btn" id="sbSync" type="button">Kirim sekarang</button>
+        <button class="mini-btn" id="sbOut" type="button">Keluar</button>
+      </div>
+      <p class="hint" id="sbHint">Masuk sekali saja. Foto otomatis terkirim saat ada internet.</p>
+    </section>
+
+    <p class="ver">Kamera Revit SD · Versi <span id="ver"></span></p>
   </section>
-  <p class="ver">Versi <span id="ver"></span></p>
-</div>
+</main>
+
+<nav class="bottomnav" id="bottomNav" aria-label="Menu utama">
+  <button type="button" data-screen="foto"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="4"/></svg><span>Foto</span></button>
+  <button type="button" data-screen="kegiatan"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M8 14h4"/></svg><span>Kegiatan</span><em id="bnKeg" hidden></em></button>
+  <button type="button" data-screen="video"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/></svg><span>Video</span><em id="bnVid" hidden></em></button>
+  <button type="button" data-screen="atur"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span>Pengaturan</span></button>
+</nav>
 
 <div class="update" id="updBar" hidden>
   <span>Versi baru aplikasi tersedia.</span>
@@ -179,13 +210,7 @@
   </div>
 </div>
 
-<div class="dock"><div class="in">
-  <p id="dockMsg"></p>
-  <div class="dockbtns">
-    <button class="btn" id="zipBtn" type="button" disabled>Unduh (.zip)</button>
-    <button class="btn primary" id="shareAllBtn" type="button" disabled>Unggah ke Drive</button>
-  </div>
-</div></div>
+
 
 <div class="viewer" id="viewer" hidden role="dialog" aria-label="Pratinjau foto">
   <div>
