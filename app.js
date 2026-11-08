@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.8.0 · 8 Nov 2026";
+const APP_VERSION = "1.8.1 · 8 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -206,7 +206,9 @@ const HELP_APPROX =
   "HP hanya memberi lokasi perkiraan. Di Android: Pengaturan → Aplikasi → Chrome → Izin → Lokasi → aktifkan \"Gunakan lokasi akurat\". " +
   "Nyalakan juga Lokasi dan \"Akurasi lokasi Google\" di pengaturan Lokasi HP, lalu ketuk Cari ulang di luar ruangan.";
 const HELP_DENIED =
-  "Izin lokasi ditolak. Ketuk ikon gembok/pengaturan di samping alamat situs → Izin → Lokasi → Izinkan, lalu ketuk Cari ulang.";
+  "Izin lokasi ditolak. Android: ketuk ikon gembok di samping alamat situs → Izin → Lokasi → Izinkan. " +
+  "iPhone: Pengaturan → Privasi & Keamanan → Layanan Lokasi → Situs Web Safari → Saat Digunakan + Lokasi Akurat; " +
+  "lalu Pengaturan → Safari → Lokasi → Izinkan. Setelah itu ketuk Aktifkan GPS.";
 
 function onFix(p) {
   const nf = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), t: Date.now() };
@@ -216,7 +218,12 @@ function onFix(p) {
   renderGps();
 }
 function onGpsErr(err) {
-  if (err.code === 1) { setGps("err", "Izin lokasi ditolak."); showHelp(HELP_DENIED); }
+  if (err.code === 1) {
+    setGps("err", "Izin lokasi ditolak."); showHelp(HELP_DENIED);
+    try { localStorage.removeItem("kka-gps"); } catch (e) {} // jangan meminta terus bila ditolak
+    if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    $("gpsBtn").hidden = false;
+  }
   else if (!fix) setGps("err", "GPS belum dapat sinyal. Coba di luar ruangan.");
   $("gpsRetry").hidden = false;
 }
@@ -235,13 +242,15 @@ function showHelp(t) { $("gpsHelp").textContent = t; $("gpsHelp").hidden = !t; }
 function startGps() {
   if (!("geolocation" in navigator)) { setGps("err", "HP ini tidak mendukung GPS di browser"); return; }
   if (!window.isSecureContext) { setGps("err", "GPS butuh alamat https://"); return; }
+  try { localStorage.setItem("kka-gps", "1"); } catch (e) {} // ingat: GPS menyala otomatis saat aplikasi dibuka lagi
   if (watchId != null) navigator.geolocation.clearWatch(watchId);
   setGps("", "Mencari sinyal GPS… (bisa 1–2 menit, sebaiknya di luar ruangan)");
   watchId = navigator.geolocation.watchPosition(onFix, onGpsErr, GPS_OPT);
 }
 // Minta posisi segar (dipanggil saat kamera dibuka; HP mencari GPS selama operator memotret)
 function refreshGps() {
-  if (watchId == null || !("geolocation" in navigator)) return;
+  if (!("geolocation" in navigator)) return;
+  if (watchId == null) return startGps(); // kamera dibuka sebelum GPS aktif → nyalakan sekarang
   navigator.geolocation.getCurrentPosition(onFix, () => {}, GPS_OPT);
 }
 function setGps(cls, text) {
@@ -267,9 +276,18 @@ $("pKoor").addEventListener("change", () => {
   else if (k) { toast(`Koordinat sekolah tersimpan: ${k.lat.toFixed(6)}, ${k.lng.toFixed(6)}`); if (window.KKAGeo && navigator.onLine) KKAGeo.prefetch(k.lat, k.lng); }
   renderGps(); render();
 });
-if (navigator.permissions) {
-  navigator.permissions.query({ name: "geolocation" }).then(s => { if (s.state === "granted") startGps(); }).catch(() => {});
-}
+/* Nyalakan GPS otomatis saat aplikasi dibuka bila:
+   - operator pernah menekan "Aktifkan GPS" (diingat di HP ini), atau
+   - browser melaporkan izin lokasi sudah diberikan.
+   iPhone/Safari sering tidak melaporkan izin, jadi yang pertama yang paling berpengaruh. */
+(function autoGps() {
+  let remembered = false;
+  try { remembered = localStorage.getItem("kka-gps") === "1"; } catch (e) {}
+  if (remembered) { startGps(); return; }
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: "geolocation" }).then(s => { if (s.state === "granted") startGps(); }).catch(() => {});
+  }
+})();
 
 // ---------- Pengaturan tahap ----------
 const stageCount = st => [...photos.keys()].filter(k => { const q = parseKey(k); return !q.keg && q.st === st; }).length;
