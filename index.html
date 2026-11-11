@@ -126,7 +126,10 @@
 
     <section class="card-s" aria-labelledby="hCam">
       <h2 id="hCam">Kamera & cap foto</h2>
-      <label class="f">Gaya cap foto<select id="pGaya"><option value="lengkap">Lengkap: peta, alamat, Lat/Long</option><option value="ringkas">Ringkas: 3 baris</option></select></label>
+      <div class="row2">
+        <label class="f">Gaya cap foto<select id="pGaya"><option value="lengkap">Lengkap: peta & alamat (seperti kamera GPS)</option><option value="ringkas">Ringkas: 3 baris</option></select></label>
+        <label class="f">Peta di cap<select id="pPeta"><option value="satelit">Satelit</option><option value="jalan">Jalan</option></select></label>
+      </div>
       <div class="restamp"><span id="oldInfo"></span><button class="btn" id="oldBtn2" type="button"></button></div>
       <label class="chk"><input type="checkbox" id="optLive" checked> Kamera dengan arahan langsung</label>
       <label class="chk"><input type="checkbox" id="optGuide" checked> Panduan posisi sebelum memotret</label>

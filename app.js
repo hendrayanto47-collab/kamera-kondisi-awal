@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.8.5 · 11 Nov 2026";
+const APP_VERSION = "1.9.0 · 11 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -192,6 +192,13 @@ for (const [id, k] of Object.entries(fmap)) {
 }
 $("aGrup").innerHTML = GROUPS.map(g => `<option>${g}</option>`).join("");
 $("pGaya").value = profil.gaya || "lengkap";
+$("pPeta").value = profil.peta || "satelit";
+if (window.KKAGeo) KKAGeo.setSource(profil.peta || "satelit");
+$("pPeta").addEventListener("change", e => {
+  profil.peta = e.target.value; saveState(); KKAGeo.setSource(profil.peta);
+  const g = currentGps(); if (g && navigator.onLine) KKAGeo.prefetch(g.lat, g.lng);
+  toast(profil.peta === "satelit" ? "Peta di cap: satelit." : "Peta di cap: jalan (OpenStreetMap).");
+});
 $("pGaya").addEventListener("change", e => { profil.gaya = e.target.value; saveState(); render(); toast(e.target.value === "lengkap" ? "Cap lengkap: peta, alamat, Lat/Long, waktu." : "Cap ringkas: 3 baris."); });
 // Alamat otomatis dari GPS / koordinat sekolah (OpenStreetMap), tetap bisa diubah manual
 async function fillAlamat(force) {
@@ -813,7 +820,7 @@ async function stamp(img, takenAt, gps, p, a, opts = {}) {
   if ((profil.gaya || "lengkap") === "lengkap" && gps && window.KKAGeo) {
     await stampFull(x, W, H, when0, gps, p, a, opts);
     const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
-    const res = { blob, t: when0.getTime(), lat: gps.lat, lng: gps.lng, acc: gps.acc, sv: "lengkap" };
+    const res = { blob, t: when0.getTime(), lat: gps.lat, lng: gps.lng, acc: gps.acc, sv: "lengkap2" };
     if (orig) res.orig = orig;
     return res;
   }
@@ -890,45 +897,15 @@ async function addressFor(gps) {
   const found = await Promise.race([KKAGeo.reverse(gps.lat, gps.lng), new Promise(r => setTimeout(() => r(null), 3500))]);
   return found ? { text: found, exact: true } : { text: profil.wil || "", exact: false };
 }
+/* Cap gaya kamera GPS: kotak peta (satelit/jalan) terpisah + kartu teks:
+   judul kecamatan/provinsi + bendera, Plus Code & alamat, Lat/Long, tanggal (AM/PM GMT), Note (sudut, ruang, tahap, sekolah). */
+const niceTag = t => String(t || "").toLowerCase().replace(/(^|\s|\()\S/g, c => c.toUpperCase()).replace(/Sd\b/g, "SD");
 async function stampFull(x, W, H, when, gps, p, a, opts) {
-  const u = Math.min(W, H) / 720;
-  const pad = Math.round(12 * u), tFs = Math.round(23 * u), bFs = Math.round(16 * u), lh = Math.round(bFs * 1.38);
-  const ad = await addressFor(gps), addr = ad.text;
-  const pc = KKAGeo.plusCode(gps.lat, gps.lng);
-  const desa = ad.exact ? (addr.split(",")[0] || "").trim() : "";
-  const hari = when.toLocaleDateString("id-ID", { weekday: "long" });
-  const tglTxt = `${hari}, ${two(when.getDate())}/${two(when.getMonth() + 1)}/${when.getFullYear()} ${two(when.getHours())}:${two(when.getMinutes())} ${zoneLabel(when)}`;
-  const coord = `Lat ${gps.lat.toFixed(6)}°  Long ${gps.lng.toFixed(6)}°` + (gps.src === "sekolah" ? "  (koordinat sekolah)" : gps.acc != null ? `  (±${gps.acc} m)` : "");
-  const title = opts.title || `${a.l.toUpperCase()} — ${p.nama.toUpperCase()}`;
-  const tag = (opts.tag || "KONDISI AWAL 0%");
-  // Ukur dulu: peta di kiri setinggi blok teks
-  x.font = `500 ${bFs}px Arial, sans-serif`;
-  const estMapS = Math.round(tFs * 1.2 + lh * 5);
-  const left = pad * 2 + estMapS + Math.round(14 * u), maxW = W - left - pad * 2;
-  const addrLines = wrapText(x, addr || "-", maxW, 2);
-  const body = [...addrLines, `${coord}  ·  ${KKAGeo.shortCode(pc)}${desa ? " " + desa : ""}`, tglTxt,
-    `${profil.nama || "-"} · NPSN ${profil.npsn || "-"} · ${tag} · Revitalisasi SD 2026`];
-  const blockH = Math.round(tFs * 1.2) + lh * body.length;
-  const mapS = blockH;
-  const bandH = blockH + pad * 2, top = H - bandH - pad;
-  // Latar: kotak gelap transparan berujung bulat
-  const bx = pad, bw = W - pad * 2, r = 10 * u;
-  x.save();
-  x.fillStyle = opts.cover ? "rgb(18,20,19)" : "rgba(10,12,11,.76)";
-  if (opts.cover) x.fillRect(0, top - pad, W, H - top + pad);
-  x.beginPath(); x.moveTo(bx + r, top); x.arcTo(bx + bw, top, bx + bw, top + bandH, r); x.arcTo(bx + bw, top + bandH, bx, top + bandH, r);
-  x.arcTo(bx, top + bandH, bx, top, r); x.arcTo(bx, top, bx + bw, top, r); x.closePath(); x.fill();
-  x.restore();
-  await KKAGeo.drawMap(x, bx + pad, top + pad, mapS, gps.lat, gps.lng);
-  const tx = bx + pad + mapS + Math.round(14 * u), tw = bx + bw - pad - tx;
-  x.shadowColor = "rgba(0,0,0,.5)"; x.shadowBlur = 2 * u; x.textAlign = "left";
-  let y = top + pad + tFs;
-  x.font = `800 ${tFs}px Arial, sans-serif`; x.fillStyle = "#f2b705";
-  x.fillText(title, tx, y, tw);
-  y += Math.round(tFs * 0.2);
-  x.font = `500 ${bFs}px Arial, sans-serif`;
-  body.forEach((l, i) => { y += lh; x.fillStyle = i < addrLines.length ? "#ffffff" : "rgba(255,255,255,.88)"; x.fillText(l, tx, y - lh * 0.22, tw); });
-  x.shadowBlur = 0;
+  const ad = await addressFor(gps);
+  const what = opts.title ? niceTag(opts.title) : `${a.l} — ${p.nama}`;
+  const note = `${what} · ${niceTag(opts.tag || "KONDISI AWAL 0%")} · ${profil.nama || "-"} (NPSN ${profil.npsn || "-"})`;
+  await KKAGeo.drawCard(x, W, H, { lat: gps.lat, lng: gps.lng, acc: gps.acc, src: gps.src, addr: ad.exact ? ad.text : "",
+    fallbackHead: ad.text || "Indonesia", when, note, app: "Kamera Revit SD", cover: opts.cover });
 }
 
 // ---------- Cetak ulang cap untuk foto tanpa koordinat ----------
@@ -1014,7 +991,7 @@ $("locBtn").addEventListener("click", async e => {
 /* Foto dianggap "cap lama" bila gaya capnya berbeda dari pilihan sekarang (foto versi lama tidak punya tanda gaya).
    Cetak ulang memakai salinan tanpa cap (bersih) bila ada; bila tidak, cap lama ditutup lalu dicetak cap baru.
    Tanggal/jam & koordinat asli foto tetap dipakai. */
-const curStyle = () => profil.gaya || "lengkap";
+const curStyle = () => ((profil.gaya || "lengkap") === "lengkap" ? "lengkap2" : "ringkas"); // lengkap2 = gaya kamera GPS (v1.9)
 const oldStampKeys = () => [...photos.entries()]
   .filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.sv !== curStyle() && (ph.lat != null || schoolKoor())).map(([k]) => k);
 function renderOldStamp() {
@@ -1024,7 +1001,7 @@ function renderOldStamp() {
   $("oldInfo").textContent = n
     ? `${n} foto masih memakai cap lama.` + (n - clean ? ` ${clean} bisa dicetak ulang bersih; ${n - clean} foto dari versi awal akan ditutup cap lamanya dengan latar gelap.` : "")
     : "Semua foto sudah memakai cap terbaru.";
-  $("oldText").textContent = `${n} foto masih memakai cap lama. Perbarui ke cap ${curStyle() === "lengkap" ? "lengkap (peta & alamat)" : "ringkas"}? Tanggal & jam asli tidak berubah.`;
+  $("oldText").textContent = `${n} foto masih memakai cap lama. Perbarui ke cap ${curStyle() === "lengkap2" ? "baru (peta & alamat seperti kamera GPS)" : "ringkas"}? Tanggal & jam asli tidak berubah.`;
   for (const id of ["oldBtn", "oldBtn2"]) { $(id).textContent = `Perbarui cap ${n} foto`; $(id).disabled = !n || restamping; }
 }
 let restamping = false;

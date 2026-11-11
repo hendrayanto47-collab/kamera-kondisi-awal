@@ -115,34 +115,18 @@
     rec.busyOverlay = true;
     try {
       const o = rec.opts, now = new Date(), g = o.gps ? o.gps() : null;
-      const G = window.KKAGeo;
-      const pad = 12, tFs = 24, bFs = 17, lh = 23, lines = 4;
-      const blockH = Math.round(tFs * 1.2) + lh * lines, bandH = blockH + pad * 2, oh = bandH + pad;
+      const oh = 300;
       const cv = rec.ovBuf || (rec.ovBuf = document.createElement("canvas"));
       cv.width = W; cv.height = oh;
-      const x = cv.getContext("2d");
-      x.clearRect(0, 0, W, oh);
-      const bx = pad, bw = W - pad * 2, top = 0, r = 10;
-      x.fillStyle = "rgba(10,12,11,.72)";
-      x.beginPath(); x.moveTo(bx + r, top); x.arcTo(bx + bw, top, bx + bw, top + bandH, r); x.arcTo(bx + bw, top + bandH, bx, top + bandH, r);
-      x.arcTo(bx, top + bandH, bx, top, r); x.arcTo(bx, top, bx + bw, top, r); x.closePath(); x.fill();
-      let tx = bx + pad;
-      if (g && G) { await G.drawMap(x, bx + pad, top + pad, blockH, g.lat, g.lng); tx = bx + pad + blockH + 14; }
-      const tw = bx + bw - pad - tx;
-      const addr = o.address ? o.address(g) : "";
-      const coord = !g ? "GPS tidak tersedia"
-        : `Lat ${g.lat.toFixed(6)}°  Long ${g.lng.toFixed(6)}°` + (g.src === "sekolah" ? "  (koordinat sekolah)" : g.acc != null ? `  (±${g.acc} m)` : "")
-          + (G ? `  ·  ${G.shortCode(G.plusCode(g.lat, g.lng))}` : "");
-      const hari = now.toLocaleDateString("id-ID", { weekday: "long" });
-      const waktu = `${hari}, ${two(now.getDate())}/${two(now.getMonth() + 1)}/${now.getFullYear()} ${two(now.getHours())}:${two(now.getMinutes())}:${two(now.getSeconds())} ${o.zone(now)}`;
-      const body = [addr || "-", coord, waktu, `${o.idLine} · ${(o.tag || "VIDEO")} · Revitalisasi SD 2026`];
-      x.shadowColor = "rgba(0,0,0,.5)"; x.shadowBlur = 2; x.textAlign = "left";
-      let y = top + pad + tFs;
-      x.font = `800 ${tFs}px Arial, sans-serif`; x.fillStyle = "#f2b705"; x.fillText(o.title.toUpperCase(), tx, y, tw);
-      y += Math.round(tFs * 0.2);
-      x.font = `500 ${bFs}px Arial, sans-serif`;
-      body.forEach((l, i) => { y += lh; x.fillStyle = i === 0 ? "#fff" : "rgba(255,255,255,.88)"; x.fillText(l, tx, y - lh * 0.22, tw); });
-      // tukar ke kanvas yang dipakai saat menggambar bingkai
+      const x = cv.getContext("2d"); x.clearRect(0, 0, W, oh);
+      if (g && window.KKAGeo) {
+        const addr = o.address ? o.address(g) : "";
+        await KKAGeo.drawCard(x, W, oh, { u: 1, lat: g.lat, lng: g.lng, acc: g.acc, src: g.src, addr, fallbackHead: addr || "Indonesia",
+          when: now, seconds: true, note: `${o.title} · ${o.idLine} · Video dokumentasi revitalisasi`, app: "Kamera Revit SD" });
+      } else {
+        x.fillStyle = "rgba(0,0,0,.6)"; x.fillRect(14, oh - 60, W - 28, 46);
+        x.fillStyle = "#fff"; x.font = "600 18px Arial, sans-serif"; x.fillText(`${o.title} · GPS tidak tersedia · ${now.toLocaleString("id-ID")}`, 28, oh - 30);
+      }
       const show = rec.overlay && rec.overlay !== cv ? rec.overlay : document.createElement("canvas");
       rec.ovBuf = show; rec.overlay = cv;
     } catch (e) {}
