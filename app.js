@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.8.3 · 8 Nov 2026";
+const APP_VERSION = "1.8.4 · 11 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -91,7 +91,7 @@ function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
   dbPut(k, { blob: v.blob, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, kind: "video" });
 }
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "synced", "path", "prevPath"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -192,7 +192,7 @@ for (const [id, k] of Object.entries(fmap)) {
 }
 $("aGrup").innerHTML = GROUPS.map(g => `<option>${g}</option>`).join("");
 $("pGaya").value = profil.gaya || "lengkap";
-$("pGaya").addEventListener("change", e => { profil.gaya = e.target.value; saveState(); toast(e.target.value === "lengkap" ? "Cap lengkap: peta, alamat, Lat/Long, waktu." : "Cap ringkas: 3 baris."); });
+$("pGaya").addEventListener("change", e => { profil.gaya = e.target.value; saveState(); render(); toast(e.target.value === "lengkap" ? "Cap lengkap: peta, alamat, Lat/Long, waktu." : "Cap ringkas: 3 baris."); });
 // Alamat otomatis dari GPS / koordinat sekolah (OpenStreetMap), tetap bisa diubah manual
 async function fillAlamat(force) {
   const g = currentGps(); if (!g) { if (force) toast("Lokasi belum ada. Aktifkan GPS atau isi koordinat sekolah."); return; }
@@ -379,7 +379,7 @@ function render() {
   if (sc === "kegiatan") { $("eyebrowStage").textContent = "Dokumentasi kegiatan"; renderKeg(); }
   if (sc === "video") renderVid();
   renderTrash(); renderHeader();
-  renderCloud(); renderFix();
+  renderCloud(); renderFix(); renderOldStamp();
   $("fixBox").hidden = $("fixBox").hidden || sc === "atur";
 }
 
@@ -789,7 +789,7 @@ async function stamp(img, takenAt, gps, p, a, opts = {}) {
   if ((profil.gaya || "lengkap") === "lengkap" && gps && window.KKAGeo) {
     await stampFull(x, W, H, when0, gps, p, a, opts);
     const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
-    const res = { blob, t: when0.getTime(), lat: gps.lat, lng: gps.lng, acc: gps.acc };
+    const res = { blob, t: when0.getTime(), lat: gps.lat, lng: gps.lng, acc: gps.acc, sv: "lengkap" };
     if (orig) res.orig = orig;
     return res;
   }
@@ -837,7 +837,7 @@ async function stamp(img, takenAt, gps, p, a, opts = {}) {
   x.shadowBlur = 0;
 
   const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
-  const res = { blob, t: when.getTime(), lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, acc: gps ? gps.acc : null };
+  const res = { blob, t: when.getTime(), lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, acc: gps ? gps.acc : null, sv: "ringkas" };
   if (orig) res.orig = orig;
   return res;
 }
@@ -937,13 +937,55 @@ $("fixBtn").addEventListener("click", async () => {
       const res = await stamp(img, ph.t, { ...sk, acc: null, src: "sekolah" }, c.p, c.a, { ...c.opts, cover: !ph.orig });
       URL.revokeObjectURL(ph.url);
       const warn = (ph.warn || []).filter(w => !/GPS|koordinat/i.test(w)).concat("GPS HP tidak tersedia saat memotret; dicetak koordinat sekolah.");
-      photos.set(k, { ...ph, blob: res.blob, lat: sk.lat, lng: sk.lng, acc: null, warn,
+      photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: sk.lat, lng: sk.lng, acc: null, warn,
         synced: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
       persist(k); ok++;
     } catch (e) {}
   }
   render(); toast(`${ok} foto diperbarui dengan koordinat sekolah.`); syncAll();
 });
+
+// ---------- Perbarui cap foto lama ke gaya yang dipilih ----------
+/* Foto dianggap "cap lama" bila gaya capnya berbeda dari pilihan sekarang (foto versi lama tidak punya tanda gaya).
+   Cetak ulang memakai salinan tanpa cap (bersih) bila ada; bila tidak, cap lama ditutup lalu dicetak cap baru.
+   Tanggal/jam & koordinat asli foto tetap dipakai. */
+const curStyle = () => profil.gaya || "lengkap";
+const oldStampKeys = () => [...photos.entries()]
+  .filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.sv !== curStyle() && (ph.lat != null || schoolKoor())).map(([k]) => k);
+function renderOldStamp() {
+  const keys = oldStampKeys(), n = keys.length;
+  const clean = keys.filter(k => photos.get(k).orig).length;
+  $("oldBox").hidden = n === 0 || screen === "atur";
+  $("oldInfo").textContent = n
+    ? `${n} foto masih memakai cap lama.` + (n - clean ? ` ${clean} bisa dicetak ulang bersih; ${n - clean} foto dari versi awal akan ditutup cap lamanya dengan latar gelap.` : "")
+    : "Semua foto sudah memakai cap terbaru.";
+  $("oldText").textContent = `${n} foto masih memakai cap lama. Perbarui ke cap ${curStyle() === "lengkap" ? "lengkap (peta & alamat)" : "ringkas"}? Tanggal & jam asli tidak berubah.`;
+  for (const id of ["oldBtn", "oldBtn2"]) { $(id).textContent = `Perbarui cap ${n} foto`; $(id).disabled = !n || restamping; }
+}
+let restamping = false;
+async function restampOld(btn) {
+  const keys = oldStampKeys(); if (!keys.length || restamping) return;
+  restamping = true; let ok = 0, i = 0;
+  for (const k of keys) {
+    i++; btn.textContent = `Memperbarui ${i}/${keys.length}…`;
+    const ph = photos.get(k), c = stampCtx(k, ph.cap);
+    const sk = schoolKoor();
+    const gps = ph.lat != null ? { lat: ph.lat, lng: ph.lng, acc: ph.acc ?? null, src: ph.acc == null ? "sekolah" : "gps" }
+      : { ...sk, acc: null, src: "sekolah" };
+    try {
+      const img = await createImageBitmap(ph.orig || ph.blob);
+      const res = await stamp(img, ph.t, gps, c.p, c.a, { ...c.opts, cover: !ph.orig });
+      URL.revokeObjectURL(ph.url);
+      photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: gps.lat, lng: gps.lng, acc: gps.acc, up: undefined,
+        synced: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
+      persist(k); ok++;
+    } catch (e) {}
+  }
+  restamping = false; render();
+  toast(`${ok} foto diperbarui ke cap terbaru. Unggah ulang ke Drive bila sebelumnya sudah terkirim.`); syncAll();
+}
+$("oldBtn").addEventListener("click", e => restampOld(e.currentTarget));
+$("oldBtn2").addEventListener("click", e => restampOld(e.currentTarget));
 
 // ---------- Ambil → periksa → simpan ----------
 let pending = null; // {key, rec, url}

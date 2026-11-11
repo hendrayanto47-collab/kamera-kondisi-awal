@@ -315,3 +315,7 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .ph h3{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ph-acts{display:flex;gap:4px;align-items:center;margin-left:auto}
 .hint.empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:14px;text-align:center}
+
+.oldbox{border-color:var(--sky)}
+.restamp{display:grid;gap:8px;font-size:13px;color:var(--muted);border:1px dashed var(--line);border-radius:10px;padding:10px}
+.restamp .btn{justify-self:start}
