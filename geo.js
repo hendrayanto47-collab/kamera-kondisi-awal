@@ -36,6 +36,8 @@
       if (v && !seen.has(v.toLowerCase())) { seen.add(v.toLowerCase()); parts.push(v); }
     }
     if (parts.length && a.postcode) parts[parts.length - 1] += " " + a.postcode;
+    // Di luar Indonesia: tulis nama negaranya agar kesalahan koordinat langsung terlihat (mis. "…, Malaysia")
+    if (parts.length && a.country && (a.country_code || "").toLowerCase() !== "id") parts.push(a.country);
     if (parts.length >= 2) return parts.join(", ");
     return String(j.display_name || "").replace(/,\s*Indonesia$/i, "");
   }

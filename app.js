@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.9.0 · 11 Nov 2026";
+const APP_VERSION = "1.9.1 · 11 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -188,7 +188,11 @@ function toast(m, actLabel, act) {
 const fmap = { pNama: "nama", pNpsn: "npsn", pWil: "wil", pKoor: "koor", pAlamat: "alamat" };
 for (const [id, k] of Object.entries(fmap)) {
   $(id).value = profil[k] || "";
-  $(id).addEventListener("input", e => { profil[k] = e.target.value; saveState(); if (k === "nama" || k === "npsn") renderHeader(); });
+  $(id).addEventListener("input", e => {
+    profil[k] = e.target.value; if (k === "alamat") profil.alamatAuto = false; saveState();
+    if (k === "nama" || k === "npsn") renderHeader();
+    if (k === "wil" || k === "alamat") renderKoorWarn();
+  });
 }
 $("aGrup").innerHTML = GROUPS.map(g => `<option>${g}</option>`).join("");
 $("pGaya").value = profil.gaya || "lengkap";
@@ -208,7 +212,7 @@ async function fillAlamat(force) {
   $("pAlamatBtn").disabled = true;
   const a = await KKAGeo.reverse(g.lat, g.lng, force);
   $("pAlamatBtn").disabled = false;
-  if (a) { profil.alamat = a; $("pAlamat").value = a; saveState(); if (force) toast("Alamat diisi dari lokasi."); }
+  if (a) { profil.alamat = a; profil.alamatAuto = true; $("pAlamat").value = a; saveState(); renderKoorWarn(); if (force) toast("Alamat diisi dari lokasi."); }
   else if (force) toast("Alamat belum ditemukan. Ketik manual, mis. Desa Sarang Burung, Kec. Danau Panggang.");
   KKAGeo.prefetch(g.lat, g.lng);
 }
@@ -243,10 +247,15 @@ function onGpsErr(err) {
   $("gpsRetry").hidden = false;
 }
 function renderGps() {
+  renderKoorWarn();
   if (!fix) return;
   $("gpsBtn").hidden = true; $("gpsRetry").hidden = false;
   $("useHereBtn").hidden = !(fix.acc <= 30);
   const far = farFromSchool(fix);
+  if (far > KKA.LIMIT.schoolFar && koorSuspect()) {
+    setGps("err", `Lokasi HP terbaca ${(far / 1000).toFixed(0)} km dari koordinat sekolah — koordinat sekolah kemungkinan salah tanda minus`);
+    showHelp(""); return;
+  }
   if (far > KKA.LIMIT.schoolFar) {
     setGps("err", `Lokasi HP terbaca ${(far / 1000).toFixed(far >= 10000 ? 0 : 1)} km dari sekolah (±${fix.acc} m) — tidak dipakai, foto memakai koordinat sekolah`);
     showHelp(fix.acc <= KKA.LIMIT.gpsAcc
@@ -298,16 +307,59 @@ function schoolKoor() {
   if (lat < -11.5 || lat > 6.5 || lng < 94 || lng > 141.5) return null; // di luar Indonesia
   return { lat, lng };
 }
+/* Deteksi koordinat sekolah yang kehilangan tanda minus (mis. 2.4773 padahal -2.4773).
+   Sekolah di selatan khatulistiwa (Kalsel, Jawa, Bali, NTB/NTT, dst.) lintangnya harus negatif. */
+const SOUTH_RE = /kalimantan selatan|kalsel|hulu sungai|banjar|tapin|tabalong|balangan|barito|kotabaru|tanah laut|tanah bumbu|kalimantan tengah|kalteng|jawa|jakarta|banten|yogyakarta|diy|bali|nusa tenggara|ntb|ntt|lampung|sumatera selatan|sumsel|bengkulu|jambi|bangka|belitung|sulawesi selatan|sulsel|sulawesi tenggara|sultra|sulawesi barat|sulbar|maluku|papua selatan/i;
+const FOREIGN_RE = /malaysia|sarawak|sabah|brunei|singapore|singapura|philippines|filipina/i;
+function koorSuspect() {
+  const sk = schoolKoor(); if (!sk || sk.lat <= 0) return null;
+  const flip = { lat: -sk.lat, lng: sk.lng };
+  const near = fix && KKA.distanceM(fix, sk) > 50000 && KKA.distanceM(fix, flip) < 30000;
+  const why = near ? "Lokasi HP Anda justru dekat dengan titik bertanda minus."
+    : SOUTH_RE.test(profil.wil || "") ? "Wilayah sekolah berada di selatan khatulistiwa, jadi lintangnya harus diawali minus (-)."
+    : FOREIGN_RE.test(profil.alamat || "") ? "Titik ini jatuh di luar Indonesia (lihat alamat)." : "";
+  return why ? { flip, why } : null;
+}
+function renderKoorWarn() {
+  const s = koorSuspect(), sk = schoolKoor();
+  const foreign = FOREIGN_RE.test(profil.alamat || "");
+  $("koorWarn").hidden = !s && !foreign;
+  if (s) {
+    $("koorWarnTxt").textContent = `Koordinat sekolah ${sk.lat}, ${sk.lng} berada di utara khatulistiwa (dekat Sarawak, Malaysia). ${s.why}`;
+    $("koorFlip").hidden = false; $("koorFlip").textContent = `Perbaiki jadi ${s.flip.lat}, ${s.flip.lng}`;
+  } else if (foreign) {
+    $("koorWarnTxt").textContent = "Alamat lokasi terisi alamat luar negeri. Kosongkan lalu ketuk \"Isi dari GPS\" atau ketik alamat sekolah.";
+    $("koorFlip").hidden = false; $("koorFlip").textContent = "Isi ulang alamat";
+  }
+}
+$("koorFlip").addEventListener("click", () => {
+  const s = koorSuspect();
+  if (s) {
+    profil.koor = `${s.flip.lat}, ${s.flip.lng}`; $("pKoor").value = profil.koor;
+    toast(`Koordinat sekolah diperbaiki: ${profil.koor}`);
+    if (window.KKAGeo && navigator.onLine) KKAGeo.prefetch(s.flip.lat, s.flip.lng);
+  }
+  refreshAlamatAfterKoor(true); saveState(); renderGps(); render();
+});
+// Setelah koordinat sekolah berubah, alamat otomatis (atau alamat luar negeri) ikut diperbarui
+function refreshAlamatAfterKoor(force) {
+  if (force || profil.alamatAuto || FOREIGN_RE.test(profil.alamat || "")) {
+    profil.alamat = ""; $("pAlamat").value = ""; saveState(); fillAlamat(true);
+  }
+}
 $("useHereBtn").addEventListener("click", () => {
   if (!fix || fix.acc > 30) { toast("GPS belum cukup akurat (perlu ±30 m atau lebih baik)."); return; }
   profil.koor = `${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)}`; $("pKoor").value = profil.koor; saveState();
-  toast(`Koordinat sekolah diisi dari GPS: ${profil.koor}`); renderGps(); render();
+  toast(`Koordinat sekolah diisi dari GPS: ${profil.koor}`); refreshAlamatAfterKoor(false); renderGps(); render();
   if (window.KKAGeo && navigator.onLine) KKAGeo.prefetch(fix.lat, fix.lng);
 });
 $("pKoor").addEventListener("change", () => {
   const k = schoolKoor();
   if (profil.koor && !k) toast("Format koordinat belum dikenali. Contoh: -2.486486, 115.135429");
-  else if (k) { toast(`Koordinat sekolah tersimpan: ${k.lat.toFixed(6)}, ${k.lng.toFixed(6)}`); if (window.KKAGeo && navigator.onLine) KKAGeo.prefetch(k.lat, k.lng); }
+  else if (k) {
+    toast(`Koordinat sekolah tersimpan: ${k.lat.toFixed(6)}, ${k.lng.toFixed(6)}`); if (window.KKAGeo && navigator.onLine) KKAGeo.prefetch(k.lat, k.lng);
+    if (!koorSuspect()) refreshAlamatAfterKoor(false);
+  }
   renderGps(); render();
 });
 /* Nyalakan GPS otomatis saat aplikasi dibuka bila:
@@ -405,7 +457,7 @@ function render() {
   if (sc === "kegiatan") { $("eyebrowStage").textContent = "Dokumentasi kegiatan"; renderKeg(); }
   if (sc === "video") renderVid();
   renderTrash(); renderHeader();
-  renderCloud(); renderFix(); renderOldStamp(); renderWrongLoc();
+  renderCloud(); renderFix(); renderOldStamp(); renderWrongLoc(); renderKoorWarn();
   $("fixBox").hidden = $("fixBox").hidden || sc === "atur";
 }
 
@@ -924,7 +976,7 @@ function renderFix() {
 }
 $("fixFill").addEventListener("click", () => goScreen("atur", "pKoor"));
 // Tombol cetak langsung aktif begitu koordinat valid diketik (tanpa harus keluar dari kolom)
-$("pKoor").addEventListener("input", () => { renderFix(); renderWrongLoc(); });
+$("pKoor").addEventListener("input", () => { renderFix(); renderWrongLoc(); renderKoorWarn(); });
 $("fixBtn").addEventListener("click", async () => {
   const sk = schoolKoor(); if (!sk) return;
   const keys = noKoorKeys(); let ok = 0;
@@ -947,12 +999,13 @@ $("fixBtn").addEventListener("click", async () => {
 });
 
 // ---------- Perbaiki foto yang lokasinya salah (mis. terbaca di Malaysia) ----------
-/* Foto dianggap salah lokasi bila koordinatnya dari HP (bukan koordinat sekolah) dan
-   berjarak > 3 km dari koordinat sekolah, atau akurasinya lokasi perkiraan (≥ 500 m). */
+/* Foto dianggap salah lokasi bila berjarak > 3 km dari koordinat sekolah (termasuk foto yang dicap dengan
+   koordinat sekolah lama yang keliru), atau lokasinya dari HP dengan akurasi perkiraan (≥ 500 m).
+   Pemeriksaan jarak tidak dilakukan selama koordinat sekolah sendiri dicurigai salah. */
 const wrongLocKeys = () => {
-  const sk = schoolKoor();
-  return [...photos.entries()].filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.lat != null && ph.acc != null &&
-    ((sk && KKA.distanceM({ lat: ph.lat, lng: ph.lng }, sk) > KKA.LIMIT.schoolFar) || ph.acc >= KKA.LIMIT.approx)).map(([k]) => k);
+  const sk = koorSuspect() ? null : schoolKoor();
+  return [...photos.entries()].filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.lat != null &&
+    ((sk && KKA.distanceM({ lat: ph.lat, lng: ph.lng }, sk) > KKA.LIMIT.schoolFar) || (ph.acc != null && ph.acc >= KKA.LIMIT.approx))).map(([k]) => k);
 };
 function renderWrongLoc() {
   const keys = wrongLocKeys(), n = keys.length, sk = schoolKoor();
@@ -968,7 +1021,7 @@ function renderWrongLoc() {
 }
 $("locFill").addEventListener("click", () => goScreen("atur", "pKoor"));
 $("locBtn").addEventListener("click", async e => {
-  const sk = schoolKoor(), keys = wrongLocKeys(); if (!sk || !keys.length || restamping) return;
+  const sk = koorSuspect() ? null : schoolKoor(), keys = wrongLocKeys(); if (!sk || !keys.length || restamping) return;
   const btn = e.currentTarget; restamping = true; let ok = 0, i = 0;
   for (const k of keys) {
     i++; btn.textContent = `Memperbaiki ${i}/${keys.length}…`;
@@ -977,7 +1030,7 @@ $("locBtn").addEventListener("click", async e => {
       const img = await createImageBitmap(ph.orig || ph.blob);
       const res = await stamp(img, ph.t, { ...sk, acc: null, src: "sekolah" }, c.p, c.a, { ...c.opts, cover: !ph.orig });
       URL.revokeObjectURL(ph.url);
-      const warn = (ph.warn || []).filter(w => !/GPS|koordinat|Lokasi/i.test(w)).concat("Lokasi HP saat memotret tidak akurat; diperbaiki dengan koordinat sekolah.");
+      const warn = (ph.warn || []).filter(w => !/GPS|koordinat|Lokasi/i.test(w)).concat(ph.acc == null ? "Lokasi diperbaiki dengan koordinat sekolah yang benar." : "Lokasi HP saat memotret tidak akurat; diperbaiki dengan koordinat sekolah.");
       photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: sk.lat, lng: sk.lng, acc: null, warn, up: undefined,
         synced: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
       persist(k); ok++;
