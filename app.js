@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.9.3 · 11 Nov 2026";
+const APP_VERSION = "1.9.4 · 11 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -527,7 +527,7 @@ function renderPaket(st) {
   const anyPhoto = stageKeys(st).length > 0;
   $("tCount").textContent = cnt; $("tOf").hidden = false; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${st}%`;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
-  $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto;
+  $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto; renderShareBtn();
   const kurang = paket.filter(p => ANGLES.some(a => !photos.has(KEY(p.id, a.k, st)))).length;
   $("dockMsg").textContent = !profil.nama
     ? "Isi dulu nama sekolah dan NPSN, lalu ketuk kotak foto untuk membuka kamera."
@@ -546,7 +546,7 @@ function renderKeg() {
   }).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
   $("tBar").style.width = keys.length ? "100%" : "0";
-  $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length;
+  $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length; renderShareBtn();
   $("dockMsg").textContent = keys.length ? `${keys.length} foto kegiatan. Ketuk Unggah ke Drive untuk mengirim semuanya.`
     : "Foto kegiatan: rapat, pekerjaan berlangsung, material datang, serah terima.";
 }
@@ -1265,19 +1265,62 @@ $("zipBtn").onclick = async () => {
 // ---------- Unggah ke Drive (menu Bagikan bawaan HP) ----------
 /* Membuka menu Bagikan iPhone/Android berisi foto-foto ini. Pilih "Drive", lalu pilih folder tujuan.
    Tidak menyimpan ke galeri. Foto yang sudah dibagikan ditandai "✓ Drive". */
+/* Chrome Android menolak berbagi > 10 file atau > ~50 MB sekaligus ("Permission denied").
+   Maka foto dikirim per bagian (maks. 10 foto / 40 MB); bagian berikutnya dikirim dengan satu ketukan lagi. */
+const SHARE_MAX_FILES = 10, SHARE_MAX_BYTES = 40 * 1024 * 1024;
+let shareQ = null; // { batches, i, title, all }
+function splitBatches(keys) {
+  const out = []; let cur = [], bytes = 0;
+  for (const k of keys) {
+    const sz = photos.get(k).blob.size;
+    if (cur.length && (cur.length >= SHARE_MAX_FILES || bytes + sz > SHARE_MAX_BYTES)) { out.push(cur); cur = []; bytes = 0; }
+    cur.push(k); bytes += sz;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
 function shareKeys(keys, title) {
   if (!keys.length) return toast("Belum ada foto untuk diunggah.");
+  shareQ = { batches: splitBatches(keys), i: 0, title, all: keys.join("\n") };
+  shareNext();
+}
+function shareNext() {
+  const q = shareQ; if (!q) return;
+  const keys = q.batches[q.i], n = q.batches.length;
   const files = keys.map(k => { const ph = photos.get(k); return new File([ph.blob], fname(k), { type: "image/jpeg", lastModified: ph.t }); });
-  if (!navigator.canShare || !navigator.canShare({ files })) {
+  if (!navigator.share || !navigator.canShare || !navigator.canShare({ files })) {
+    shareQ = null; renderShareBtn();
     return toast("HP/browser ini belum mendukung kirim langsung. Pakai Unduh (.zip), lalu unggah lewat aplikasi Drive.");
   }
+  const title = n > 1 ? `${q.title} (bagian ${q.i + 1}/${n})` : q.title;
   navigator.share({ files, title }).then(() => {
     const now = Date.now();
     keys.forEach(k => { const ph = photos.get(k); if (ph) { ph.up = now; persist(k); } });
-    render(); toast(`${keys.length} foto dibagikan. Periksa di Google Drive.`);
-  }).catch(e => { if (e && e.name !== "AbortError") toast("Gagal membuka menu Bagikan: " + e.message); });
+    q.i++;
+    if (q.i < n) {
+      render(); renderShareBtn();
+      toast(`Bagian ${q.i}/${n} terkirim (${keys.length} foto). Lanjutkan bagian berikutnya.`, `Lanjut ${q.i + 1}/${n}`, shareNext);
+    } else {
+      const total = q.batches.reduce((a, b) => a + b.length, 0);
+      shareQ = null; render(); renderShareBtn(); toast(`${total} foto dibagikan. Periksa di Google Drive.`);
+    }
+  }).catch(e => {
+    if (e && e.name === "AbortError") return;
+    toast(e && e.name === "NotAllowedError"
+      ? "Menu Bagikan ditolak HP. Coba ketuk lagi, atau unggah per ruang lewat tombol \"Unggah ke Drive\" di tiap kelas."
+      : "Gagal membuka menu Bagikan: " + (e && e.message));
+  });
 }
-$("shareAllBtn").onclick = () => shareKeys(viewKeys(), screen === "kegiatan" ? "Foto kegiatan" : stageName(view));
+function renderShareBtn() {
+  const b = $("shareAllBtn"), q = shareQ;
+  if (q && q.i > 0 && q.i < q.batches.length && q.all === viewKeys().join("\n")) b.textContent = `Lanjut unggah ${q.i + 1}/${q.batches.length}`;
+  else b.textContent = "Unggah ke Drive";
+}
+$("shareAllBtn").onclick = () => {
+  const keys = viewKeys();
+  if (shareQ && shareQ.i > 0 && shareQ.all === keys.join("\n")) return shareNext(); // lanjutkan bagian berikutnya
+  shareKeys(keys, screen === "kegiatan" ? "Foto kegiatan" : stageName(view));
+};
 
 // ---------- Sinkronisasi Supabase ----------
 /* Folder di bucket: "<NPSN> - <Nama Sekolah>/<Nama paket>/<tanggal jam - paket - sudut>.jpg" */

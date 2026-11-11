@@ -2,7 +2,7 @@
    Strategi "internet dulu": saat online selalu mengambil versi terbaru dari Netlify,
    saat offline memakai salinan tersimpan. Permintaan ke situs lain (mis. Supabase) tidak disentuh.
    Ubah VERSION setiap merilis versi baru: HP akan menampilkan "Versi baru tersedia". */
-const VERSION = "1.9.3";
+const VERSION = "1.9.4";
 const CACHE = "kka-app-" + VERSION;
 const FILES = ["./", "index.html", "style.css", "app.js", "check.js", "geo.js", "camera.js", "video.js", "zip.js", "config.js", "supabase.js",
   "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
