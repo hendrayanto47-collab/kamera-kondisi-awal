@@ -323,3 +323,8 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .restamp .btn{justify-self:start}
 
 .locbox{border-color:#e5372a}
+.lockrow{margin-top:12px;display:grid;gap:4px}
+.lockrow .mini-btn{justify-self:start}
+.lockrow .hint{margin:0}
+#gpsCard.locked #pKoor,#gpsCard.locked #pAlamat{opacity:.75;border-style:dashed}
+#gpsCard.locked #lockBtn{border-color:var(--ok);color:var(--ok)}

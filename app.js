@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.9.2 · 11 Nov 2026";
+const APP_VERSION = "1.9.3 · 11 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -206,6 +206,7 @@ $("pPeta").addEventListener("change", e => {
 $("pGaya").addEventListener("change", e => { profil.gaya = e.target.value; saveState(); render(); toast(e.target.value === "lengkap" ? "Cap lengkap: peta, alamat, Lat/Long, waktu." : "Cap ringkas: 3 baris."); });
 // Alamat otomatis dari GPS / koordinat sekolah (OpenStreetMap), tetap bisa diubah manual
 async function fillAlamat(force) {
+  if (profil.lokKunci) return; // lokasi sekolah dikunci: alamat tidak diubah otomatis
   const g = currentGps(); if (!g) { if (force) toast("Lokasi belum ada. Aktifkan GPS atau isi koordinat sekolah."); return; }
   if (!force && profil.alamat) return;
   if (!navigator.onLine) { if (force) toast("Butuh internet untuk mencari alamat."); return; }
@@ -250,7 +251,7 @@ function renderGps() {
   renderKoorWarn();
   if (!fix) return;
   $("gpsBtn").hidden = true; $("gpsRetry").hidden = false;
-  $("useHereBtn").hidden = !(fix.acc <= 30);
+  $("useHereBtn").hidden = !(fix.acc <= 30) || !!profil.lokKunci;
   const far = farFromSchool(fix);
   if (far > KKA.LIMIT.schoolFar && koorSuspect()) {
     setGps("err", `Lokasi HP terbaca ${(far / 1000).toFixed(0)} km dari koordinat sekolah — koordinat sekolah kemungkinan salah tanda minus`);
@@ -312,7 +313,7 @@ function schoolKoor() {
 const SOUTH_RE = /kalimantan selatan|kalsel|hulu sungai|banjar|tapin|tabalong|balangan|barito|kotabaru|tanah laut|tanah bumbu|kalimantan tengah|kalteng|jawa|jakarta|banten|yogyakarta|diy|bali|nusa tenggara|ntb|ntt|lampung|sumatera selatan|sumsel|bengkulu|jambi|bangka|belitung|sulawesi selatan|sulsel|sulawesi tenggara|sultra|sulawesi barat|sulbar|maluku|papua selatan/i;
 const FOREIGN_RE = /malaysia|sarawak|sabah|brunei|singapore|singapura|philippines|filipina/i;
 function koorSuspect() {
-  const sk = schoolKoor(); if (!sk || sk.lat <= 0) return null;
+  const sk = schoolKoor(); if (!sk || sk.lat <= 0 || profil.lokKunci) return null;
   const flip = { lat: -sk.lat, lng: sk.lng };
   const near = fix && KKA.distanceM(fix, sk) > 50000 && KKA.distanceM(fix, flip) < 30000;
   const why = near ? "Lokasi HP Anda justru dekat dengan titik bertanda minus."
@@ -320,9 +321,35 @@ function koorSuspect() {
     : FOREIGN_RE.test(profil.alamat || "") ? "Titik ini jatuh di luar Indonesia (lihat alamat)." : "";
   return why ? { flip, why } : null;
 }
+/* Kunci lokasi sekolah: koordinat & alamat tidak bisa diubah (tidak tertimpa GPS/"Isi dari GPS")
+   sampai operator membuka kuncinya. */
+function renderLock() {
+  const on = !!profil.lokKunci, sk = schoolKoor();
+  $("pKoor").readOnly = on; $("pAlamat").readOnly = on;
+  $("pAlamatBtn").hidden = on; $("gpsCard").classList.toggle("locked", on);
+  $("lockBtn").textContent = on ? "🔓 Buka kunci" : "🔒 Kunci lokasi sekolah";
+  $("lockBtn").disabled = !on && !sk;
+  $("lockInfo").textContent = on
+    ? "Terkunci. Koordinat & alamat sekolah tidak akan berubah. Bila GPS HP lemah atau jauh dari sekolah, foto memakai lokasi ini."
+    : sk ? "Kunci agar koordinat & alamat tidak tertimpa atau terhapus tanpa sengaja." : "Isi koordinat sekolah dulu sebelum mengunci.";
+  if (on) $("useHereBtn").hidden = true;
+}
+$("lockBtn").addEventListener("click", () => {
+  if (!profil.lokKunci) {
+    if (!schoolKoor()) { toast("Isi koordinat sekolah dulu."); return; }
+    profil.lokKunci = true; saveState(); toast("Lokasi sekolah dikunci.");
+  } else if ($("lockBtn").dataset.ask !== "1") {
+    $("lockBtn").dataset.ask = "1"; $("lockBtn").textContent = "Ketuk lagi untuk membuka kunci";
+    setTimeout(() => { $("lockBtn").dataset.ask = ""; renderLock(); }, 4000); return;
+  } else {
+    $("lockBtn").dataset.ask = ""; profil.lokKunci = false; saveState(); toast("Kunci dibuka. Koordinat & alamat bisa diubah.");
+  }
+  renderLock(); renderGps();
+});
 function renderKoorWarn() {
+  renderLock();
   const s = koorSuspect(), sk = schoolKoor();
-  const foreign = FOREIGN_RE.test(profil.alamat || "");
+  const foreign = FOREIGN_RE.test(profil.alamat || "") && !profil.lokKunci;
   $("koorWarn").hidden = !s && !foreign;
   if (s) {
     $("koorWarnTxt").textContent = `Koordinat sekolah ${sk.lat}, ${sk.lng} berada di utara khatulistiwa (dekat Sarawak, Malaysia). ${s.why}`;
@@ -343,6 +370,7 @@ $("koorFlip").addEventListener("click", () => {
 });
 // Setelah koordinat sekolah berubah, alamat otomatis (atau alamat luar negeri) ikut diperbarui
 function refreshAlamatAfterKoor(force) {
+  if (profil.lokKunci) return;
   if (force || profil.alamatAuto || FOREIGN_RE.test(profil.alamat || "")) {
     profil.alamat = ""; $("pAlamat").value = ""; saveState(); fillAlamat(true);
   }
