@@ -32,6 +32,12 @@
     <button class="btn" id="fixFill" type="button" hidden>Isi koordinat sekolah</button>
   </div>
 
+  <div class="fixbox locbox" id="locBox" hidden>
+    <p id="locText"></p>
+    <button class="btn primary" id="locBtn" type="button"></button>
+    <button class="btn" id="locFill" type="button" hidden>Isi koordinat sekolah</button>
+  </div>
+
   <div class="fixbox oldbox" id="oldBox" hidden>
     <p id="oldText"></p>
     <button class="btn primary" id="oldBtn" type="button"></button>
@@ -110,6 +116,7 @@
         <span id="gpsText">GPS belum aktif</span>
         <button class="mini-btn" id="gpsBtn" type="button">Aktifkan GPS</button>
         <button class="mini-btn" id="gpsRetry" type="button" hidden>Cari ulang</button>
+        <button class="mini-btn" id="useHereBtn" type="button" hidden>Jadikan koordinat sekolah</button>
       </div>
       <p class="hint" id="gpsHelp" hidden></p>
       <label class="f">Alamat lokasi (tercetak di cap)

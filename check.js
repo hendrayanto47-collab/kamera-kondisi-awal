@@ -183,6 +183,8 @@
     twin: 8,          // beda sidik jari ≤ 8 dari 64 = foto kembar
     gpsAcc: 50,       // m
     gpsFar: 500,      // m dari lokasi foto lain
+    schoolFar: 3000,  // m: lokasi HP lebih jauh dari ini dari koordinat sekolah dianggap salah (lokasi perkiraan jaringan)
+    approx: 500,      // m: akurasi seburuk ini = lokasi perkiraan, bukan GPS satelit
     oldPhoto: 2 * 36e5, // 2 jam
   };
 
@@ -227,7 +229,9 @@
     // 7. GPS
     if (!gps) add(false, "GPS tidak aktif dan koordinat sekolah belum diisi. Koordinat tidak tercetak di foto.");
     else if (gps.src === "sekolah")
-      add(false, `GPS HP ${gps.phoneAcc ? "tidak akurat (±" + gps.phoneAcc + " m)" : "belum terkunci"}; dicetak koordinat sekolah.`);
+      add(false, gps.phoneFar > LIMIT.schoolFar
+        ? `Lokasi HP terbaca ${(gps.phoneFar / 1000).toFixed(gps.phoneFar >= 10000 ? 0 : 1)} km dari sekolah (lokasi perkiraan jaringan, bukan GPS); dicetak koordinat sekolah.`
+        : `GPS HP ${gps.phoneAcc ? "tidak akurat (±" + gps.phoneAcc + " m)" : "belum terkunci"}; dicetak koordinat sekolah.`);
     else if (gps.acc > LIMIT.gpsAcc) add(false, `Akurasi GPS rendah (±${gps.acc} m). Tunggu sebentar di area terbuka.`);
     else {
       const pts = others.filter(o => o.lat != null);
@@ -242,5 +246,5 @@
     return out;
   }
 
-  window.KKA = { PLAN, GUIDE, COMMON, analyze, runChecks, LIMIT };
+  window.KKA = { PLAN, GUIDE, COMMON, analyze, runChecks, LIMIT, distanceM };
 })();

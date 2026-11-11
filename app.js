@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.8.4 · 11 Nov 2026";
+const APP_VERSION = "1.8.5 · 11 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -238,6 +238,19 @@ function onGpsErr(err) {
 function renderGps() {
   if (!fix) return;
   $("gpsBtn").hidden = true; $("gpsRetry").hidden = false;
+  $("useHereBtn").hidden = !(fix.acc <= 30);
+  const far = farFromSchool(fix);
+  if (far > KKA.LIMIT.schoolFar) {
+    setGps("err", `Lokasi HP terbaca ${(far / 1000).toFixed(far >= 10000 ? 0 : 1)} km dari sekolah (±${fix.acc} m) — tidak dipakai, foto memakai koordinat sekolah`);
+    showHelp(fix.acc <= KKA.LIMIT.gpsAcc
+      ? "Bila Anda memang di sekolah dan GPS ini benar, berarti koordinat sekolah yang keliru: ketuk \"Jadikan koordinat sekolah\"."
+      : HELP_APPROX);
+    return;
+  }
+  if (!schoolKoor() && fix.acc >= KKA.LIMIT.approx) {
+    setGps("err", `Lokasi perkiraan ±${fix.acc} m — tidak dicetak. Isi koordinat sekolah atau aktifkan lokasi akurat.`);
+    showHelp(HELP_APPROX); return;
+  }
   if (fix.acc <= KKA.LIMIT.gpsAcc) {
     setGps("on", `GPS ${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)} (±${fix.acc} m)`); showHelp("");
     if (window.KKAGeo && navigator.onLine && !renderGps.pre) { renderGps.pre = 1; KKAGeo.prefetch(fix.lat, fix.lng); fillAlamat(false); }
@@ -278,6 +291,12 @@ function schoolKoor() {
   if (lat < -11.5 || lat > 6.5 || lng < 94 || lng > 141.5) return null; // di luar Indonesia
   return { lat, lng };
 }
+$("useHereBtn").addEventListener("click", () => {
+  if (!fix || fix.acc > 30) { toast("GPS belum cukup akurat (perlu ±30 m atau lebih baik)."); return; }
+  profil.koor = `${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)}`; $("pKoor").value = profil.koor; saveState();
+  toast(`Koordinat sekolah diisi dari GPS: ${profil.koor}`); renderGps(); render();
+  if (window.KKAGeo && navigator.onLine) KKAGeo.prefetch(fix.lat, fix.lng);
+});
 $("pKoor").addEventListener("change", () => {
   const k = schoolKoor();
   if (profil.koor && !k) toast("Format koordinat belum dikenali. Contoh: -2.486486, 115.135429");
@@ -379,7 +398,7 @@ function render() {
   if (sc === "kegiatan") { $("eyebrowStage").textContent = "Dokumentasi kegiatan"; renderKeg(); }
   if (sc === "video") renderVid();
   renderTrash(); renderHeader();
-  renderCloud(); renderFix(); renderOldStamp();
+  renderCloud(); renderFix(); renderOldStamp(); renderWrongLoc();
   $("fixBox").hidden = $("fixBox").hidden || sc === "atur";
 }
 
@@ -768,11 +787,16 @@ function takenTime(file) {
    2) koordinat sekolah bila diisi           → src "sekolah" (GPS HP dicatat di acc bila ada)
    3) GPS HP yang kurang akurat              → src "gps" dengan ±akurasi apa adanya
    Lokasi lebih tua dari 5 menit dianggap tidak ada. */
+/* Tambahan: lokasi HP yang berjarak > 3 km dari koordinat sekolah dianggap salah (mis. terbaca di Sarawak
+   karena lokasi perkiraan jaringan), dan lokasi perkiraan (akurasi ≥ 500 m) tidak pernah dicetak. */
+const farFromSchool = g => { const sk = schoolKoor(); return sk && g ? KKA.distanceM(g, sk) : 0; };
 function currentGps() {
   const live = fix && Date.now() - fix.t < 300000 ? fix : null;
-  if (live && live.acc <= KKA.LIMIT.gpsAcc) return { ...live, src: "gps" };
+  const far = live ? farFromSchool(live) : 0;
+  if (live && live.acc <= KKA.LIMIT.gpsAcc && far <= KKA.LIMIT.schoolFar) return { ...live, src: "gps" };
   const sk = schoolKoor();
-  if (sk) return { lat: sk.lat, lng: sk.lng, acc: null, phoneAcc: live ? live.acc : null, src: "sekolah" };
+  if (sk) return { lat: sk.lat, lng: sk.lng, acc: null, phoneAcc: live ? live.acc : null, phoneFar: live ? Math.round(far) : null, src: "sekolah" };
+  if (live && live.acc >= KKA.LIMIT.approx) return null; // lokasi perkiraan: lebih baik tidak dicetak
   return live ? { ...live, src: "gps" } : null;
 }
 
@@ -923,7 +947,7 @@ function renderFix() {
 }
 $("fixFill").addEventListener("click", () => goScreen("atur", "pKoor"));
 // Tombol cetak langsung aktif begitu koordinat valid diketik (tanpa harus keluar dari kolom)
-$("pKoor").addEventListener("input", () => renderFix());
+$("pKoor").addEventListener("input", () => { renderFix(); renderWrongLoc(); });
 $("fixBtn").addEventListener("click", async () => {
   const sk = schoolKoor(); if (!sk) return;
   const keys = noKoorKeys(); let ok = 0;
@@ -943,6 +967,47 @@ $("fixBtn").addEventListener("click", async () => {
     } catch (e) {}
   }
   render(); toast(`${ok} foto diperbarui dengan koordinat sekolah.`); syncAll();
+});
+
+// ---------- Perbaiki foto yang lokasinya salah (mis. terbaca di Malaysia) ----------
+/* Foto dianggap salah lokasi bila koordinatnya dari HP (bukan koordinat sekolah) dan
+   berjarak > 3 km dari koordinat sekolah, atau akurasinya lokasi perkiraan (≥ 500 m). */
+const wrongLocKeys = () => {
+  const sk = schoolKoor();
+  return [...photos.entries()].filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.lat != null && ph.acc != null &&
+    ((sk && KKA.distanceM({ lat: ph.lat, lng: ph.lng }, sk) > KKA.LIMIT.schoolFar) || ph.acc >= KKA.LIMIT.approx)).map(([k]) => k);
+};
+function renderWrongLoc() {
+  const keys = wrongLocKeys(), n = keys.length, sk = schoolKoor();
+  $("locBox").hidden = !n || screen === "atur";
+  if (!n) return;
+  let maxKm = 0;
+  if (sk) keys.forEach(k => { const ph = photos.get(k); maxKm = Math.max(maxKm, KKA.distanceM(ph, sk) / 1000); });
+  $("locText").textContent = sk
+    ? `${n} foto tercatat di lokasi yang salah${maxKm > 3 ? ` (sampai ${maxKm.toFixed(0)} km dari sekolah)` : " (lokasi perkiraan)"}. Perbaiki dengan koordinat sekolah? Tanggal & jam asli tidak berubah.`
+    : `${n} foto memakai lokasi perkiraan yang tidak akurat. Isi "Koordinat sekolah" dulu, lalu perbaiki lokasinya.`;
+  $("locBtn").hidden = !sk; $("locFill").hidden = !!sk;
+  $("locBtn").textContent = `Perbaiki lokasi ${n} foto`; $("locBtn").disabled = restamping;
+}
+$("locFill").addEventListener("click", () => goScreen("atur", "pKoor"));
+$("locBtn").addEventListener("click", async e => {
+  const sk = schoolKoor(), keys = wrongLocKeys(); if (!sk || !keys.length || restamping) return;
+  const btn = e.currentTarget; restamping = true; let ok = 0, i = 0;
+  for (const k of keys) {
+    i++; btn.textContent = `Memperbaiki ${i}/${keys.length}…`;
+    const ph = photos.get(k), c = stampCtx(k, ph.cap);
+    try {
+      const img = await createImageBitmap(ph.orig || ph.blob);
+      const res = await stamp(img, ph.t, { ...sk, acc: null, src: "sekolah" }, c.p, c.a, { ...c.opts, cover: !ph.orig });
+      URL.revokeObjectURL(ph.url);
+      const warn = (ph.warn || []).filter(w => !/GPS|koordinat|Lokasi/i.test(w)).concat("Lokasi HP saat memotret tidak akurat; diperbaiki dengan koordinat sekolah.");
+      photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: sk.lat, lng: sk.lng, acc: null, warn, up: undefined,
+        synced: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
+      persist(k); ok++;
+    } catch (er) {}
+  }
+  restamping = false; render();
+  toast(`${ok} foto diperbaiki lokasinya. Unggah ulang ke Drive bila sebelumnya sudah terkirim.`); syncAll();
 });
 
 // ---------- Perbarui cap foto lama ke gaya yang dipilih ----------
