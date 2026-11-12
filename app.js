@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.0.0 · 12 Nov 2026";
+const APP_VERSION = "2.1.0 · 12 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -850,8 +850,12 @@ function renderVid() {
   }).join("");
   // Pilihan isi video laporan
   const sel = $("mkScope"), prev = sel.value;
-  const opts = [["cmp", "Perbandingan semua tahap per ruang (0% → 100%)"], ...STAGES.map(st => [String(st), `Hanya foto ${stageName(st)}`]), ["keg", "Foto kegiatan"]];
-  sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+  const rvSts = STAGES.filter(st => paket.some(p => roomClips(p.id, st).length));
+  const rvOpts = [["rv:all", "Gabungan video ruangan – semua tahap (0% → 100%)"], ...rvSts.map(st => ["rv:" + st, `Gabungan video ruangan – ${stageName(st)}`])];
+  const phOpts = [["cmp", "Foto: perbandingan semua tahap per ruang (0% → 100%)"], ...STAGES.map(st => [String(st), `Foto ${stageName(st)}`]), ["keg", "Foto kegiatan"]];
+  sel.innerHTML = `<optgroup label="Satu video utuh dari rekaman">${rvOpts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</optgroup>`
+    + `<optgroup label="Dari foto">${phOpts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</optgroup>`;
+  if (!prev && rvSts.length) sel.value = "rv:all";
   if (prev) sel.value = prev;
   updateEstimate();
 }
@@ -898,7 +902,23 @@ function reportScenes(scope, sec) {
   const school = profil.nama || "Sekolah";
   const head = (kicker, title, lines, d = 3) => sc.push({ type: "title", kicker, title, lines, sec: d });
   const badgeColor = st => (st === 0 ? "#f0a050" : st === 100 ? "#4cc27e" : "#f2b705");
-  if (scope === "keg") {
+  if (scope.startsWith("rv")) { // gabungan video per ruangan → satu video utuh (untuk media sosial)
+    const all = scope === "rv:all", stages = all ? STAGES : [+scope.split(":")[1]];
+    const clipSec = $("mkClip").value;
+    head("DOKUMENTASI REVITALISASI SD 2026", school, [idLine().replace(school + "  ·  ", ""),
+      all ? "Perjalanan pembangunan per ruangan: 0% → 100%" : `Video per ruangan · ${stageName(stages[0])}`]);
+    for (const p of paket) {
+      const groups = stages.map(st => [st, roomClips(p.id, st)]).filter(([, c]) => c.length);
+      if (!groups.length) continue;
+      head(p.grup.toUpperCase(), p.nama, [all ? `Tahap: ${groups.map(([st]) => st + "%").join(" → ")}` : stageName(stages[0])], 2);
+      for (const [st, clips] of groups) clips.forEach(([, v], i) => {
+        const d = Math.max(1, v.dur || RV_MAX_SEC);
+        sc.push({ type: "clip", blob: v.blob, sec: clipSec === "full" ? d : Math.min(d, +clipSec),
+          badge: st === 0 ? "0% · KONDISI AWAL" : st === 100 ? "100% · SELESAI" : `PROGRES ${st}%`, badgeColor: badgeColor(st),
+          label: `${p.nama} · ${tgl(v.t)}` });
+      });
+    }
+  } else if (scope === "keg") {
     head("DOKUMENTASI KEGIATAN · REVITALISASI SD 2026", school, [idLine().replace(school + "  ·  ", ""), `${kegKeys().length} foto kegiatan`]);
     kegKeys().slice().reverse().forEach(k => { const ph = photos.get(k); sc.push({ type: "photo", blob: ph.blob, badge: "KEGIATAN", label: `${ph.cap || ""} · ${tgl(ph.t)}`, sec }); });
   } else {
@@ -923,16 +943,20 @@ function reportScenes(scope, sec) {
 }
 function updateEstimate() {
   const sc = reportScenes($("mkScope").value || "cmp", +$("mkSec").value);
-  const n = sc.filter(s => s.type === "photo").length, dur = sc.reduce((a, s) => a + s.sec, 0);
-  $("mkEst").textContent = n ? `${n} foto · durasi video ±${fmtDur(dur)}. Pembuatan butuh waktu sama dengan durasinya; biarkan layar menyala.`
-    : "Belum ada foto untuk pilihan ini.";
+  const clip = ($("mkScope").value || "").startsWith("rv");
+  $("mkSecWrap").hidden = clip; $("mkClipWrap").hidden = !clip;
+  const n = sc.filter(s => s.type === (clip ? "clip" : "photo")).length, dur = sc.reduce((a, s) => a + s.sec, 0);
+  $("mkEst").textContent = n ? `${n} ${clip ? "video" : "foto"} · durasi video ±${fmtDur(dur)}. Pembuatan butuh waktu sama dengan durasinya; biarkan layar menyala.`
+    : clip ? "Belum ada video ruangan untuk pilihan ini. Rekam dulu di kartu Video per ruangan." : "Belum ada foto untuk pilihan ini.";
   $("mkBtn").disabled = !n;
 }
 $("mkScope").addEventListener("change", updateEstimate);
 $("mkSec").addEventListener("change", updateEstimate);
+$("mkClip").addEventListener("change", updateEstimate);
 $("mkBtn").addEventListener("click", () => {
   const scope = $("mkScope").value, sc = reportScenes(scope, +$("mkSec").value);
-  const label = scope === "cmp" ? "Video laporan – perbandingan 0% → 100%" : scope === "keg" ? "Video laporan – kegiatan" : `Video laporan – ${stageName(+scope).toLowerCase()}`;
+  const label = scope === "rv:all" ? "Video utuh – perjalanan 0% → 100% (medsos)" : scope.startsWith("rv:") ? `Video utuh – ruangan ${stageName(+scope.split(":")[1]).toLowerCase()} (medsos)`
+    : scope === "cmp" ? "Video laporan – perbandingan 0% → 100%" : scope === "keg" ? "Video laporan – kegiatan" : `Video laporan – ${stageName(+scope).toLowerCase()}`;
   KKAVid.makeReport(sc, { onSaved: v => saveVideo({ ...v, title: label }), onError: m => toast(m) });
 });
 

@@ -228,12 +228,26 @@
     $("mk").hidden = false; document.documentElement.classList.add("vf-open");
     keepAwake(true);
     // Siapkan gambar
-    $("mkMsg").textContent = "Menyiapkan foto…";
-    for (const s of scenes) if (s.blob) s.img = await createImageBitmap(s.blob);
+    $("mkMsg").textContent = "Menyiapkan foto & video…";
+    // Klip video: diputar waktu-nyata ke kanvas; suaranya ikut direkam lewat Web Audio (tidak terdengar di speaker)
+    let ac = null, dest = null;
+    if (scenes.some(s => s.type === "clip")) {
+      try { ac = new (window.AudioContext || window.webkitAudioContext)(); dest = ac.createMediaStreamDestination(); } catch (e) { ac = null; }
+    }
+    for (const s of scenes) {
+      if (s.type === "clip") {
+        const v = document.createElement("video");
+        v.playsInline = true; v.preload = "auto"; v.src = s.url = URL.createObjectURL(s.blob);
+        await new Promise(res => { v.onloadeddata = res; v.onerror = res; setTimeout(res, 4000); });
+        if (ac) { try { ac.createMediaElementSource(v).connect(dest); } catch (e) { v.muted = true; } } else v.muted = true;
+        s.vid = v;
+      } else if (s.blob) s.img = await createImageBitmap(s.blob);
+    }
     const FADE = 0.5;
     const total = scenes.reduce((a, s) => a + s.sec, 0);
     const mime = pickMime();
     const cs = cv.captureStream(FPS);
+    if (dest) dest.stream.getAudioTracks().forEach(t => cs.addTrack(t));
     let r;
     try { r = new MediaRecorder(cs, mime ? { mimeType: mime, videoBitsPerSecond: 3000000 } : {}); } catch (e) { r = new MediaRecorder(cs); }
     const chunks = [];
@@ -253,10 +267,15 @@
         x.font = "500 28px Arial, sans-serif"; x.fillStyle = "#d6dbd8";
         (s.lines || []).forEach((l, i) => x.fillText(l, 120, 425 + i * 40, W - 200));
       } else {
-        const im = s.img, zoom = 1 + 0.05 * (t / s.sec); // gerak perlahan (Ken Burns)
-        const sc = Math.max(W / im.width, H / im.height) * zoom;
         x.fillStyle = "#000"; x.fillRect(0, 0, W, H);
-        x.drawImage(im, (W - im.width * sc) / 2, (H - im.height * sc) / 2, im.width * sc, im.height * sc);
+        if (s.type === "clip") {
+          const v = s.vid, vw = v.videoWidth, vh = v.videoHeight;
+          if (vw) { const sc = Math.min(W / vw, H / vh); x.drawImage(v, (W - vw * sc) / 2, (H - vh * sc) / 2, vw * sc, vh * sc); }
+        } else {
+          const im = s.img, zoom = 1 + 0.05 * (t / s.sec); // gerak perlahan (Ken Burns)
+          const sc = Math.max(W / im.width, H / im.height) * zoom;
+          x.drawImage(im, (W - im.width * sc) / 2, (H - im.height * sc) / 2, im.width * sc, im.height * sc);
+        }
         if (s.badge) {
           x.font = "800 34px Arial, sans-serif"; const bw = x.measureText(s.badge).width + 40;
           x.fillStyle = s.badgeColor || "#f2b705"; x.fillRect(40, 40, bw, 58);
@@ -271,6 +290,8 @@
       x.globalAlpha = 1;
     }
 
+    if (ac && ac.state === "suspended") { try { await ac.resume(); } catch (e) {} }
+    let cur = -1;
     r.start(1000);
     const t0 = performance.now();
     await new Promise(resolve => {
@@ -281,6 +302,11 @@
         let i = starts.findIndex((st, j) => now >= st && now < st + scenes[j].sec);
         if (i < 0) i = scenes.length - 1;
         const s = scenes[i], local = now - starts[i];
+        if (i !== cur) { // pindah adegan: hentikan klip sebelumnya, putar klip ini dari awal
+          const prev = scenes[cur]; if (prev && prev.vid) prev.vid.pause();
+          cur = i;
+          if (s.vid) { try { s.vid.currentTime = 0; } catch (e) {} s.vid.play().catch(() => { s.vid.muted = true; s.vid.play().catch(() => {}); }); }
+        }
         paintScene(s, local, 1);
         if (local < FADE && i > 0) paintScene(scenes[i - 1], scenes[i - 1].sec, 1 - local / FADE);
         $("mkBar").style.width = (now / total * 100).toFixed(1) + "%";
@@ -290,6 +316,8 @@
       tick();
     });
     r.stop(); await done;
+    scenes.forEach(s => { if (s.vid) { s.vid.pause(); s.vid.removeAttribute("src"); URL.revokeObjectURL(s.url); } });
+    if (ac) ac.close().catch(() => {});
     keepAwake(false);
     $("mk").hidden = true; document.documentElement.classList.remove("vf-open");
     const cancelled = mk.cancel; mk = null;
