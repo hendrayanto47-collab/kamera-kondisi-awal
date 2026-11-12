@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "1.9.4 · 11 Nov 2026";
+const APP_VERSION = "2.0.0 · 12 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -89,7 +89,7 @@ const photos = new Map();
 const videos = new Map();
 function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
-  dbPut(k, { blob: v.blob, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, kind: "video" });
+  dbPut(k, { blob: v.blob, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
 const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath"];
 function persist(k) {
@@ -736,25 +736,113 @@ const fmtDur = s => `${Math.floor(s / 60)}:${two(Math.round(s % 60))}`;
 const idLine = () => [profil.nama || "-", "NPSN " + (profil.npsn || "-"), profil.wil].filter(Boolean).join("  ·  ");
 const vidName = (k) => { const v = videos.get(k); return `${tgl(v.t)} ${jam(v.t)} - Video - ${clean(v.title || "Dokumentasi")}.${v.ext || "mp4"}`; };
 
+let vidAddrBusy = false;
 let vidAudio = true;
 try { vidAudio = localStorage.getItem("kka-vaudio") !== "0"; } catch (e) {}
 $("vidAudio").checked = vidAudio;
 $("vidAudio").addEventListener("change", e => { vidAudio = e.target.checked; try { localStorage.setItem("kka-vaudio", vidAudio ? "1" : "0"); } catch (e) {} });
 
-function saveVideo(v) {
-  const k = "#vid|" + Date.now().toString(36);
+function saveVideo(v, msg) {
+  const k = "#vid|" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   videos.set(k, v); persistVid(k); render();
-  toast(`Video tersimpan (${fmtDur(v.dur || 0)}, ${(v.blob.size / 1048576).toFixed(1)} MB).`);
+  toast(msg || `Video tersimpan (${fmtDur(v.dur || 0)}, ${(v.blob.size / 1048576).toFixed(1)} MB).`);
+  return k;
+}
+
+/* ---------- Video per ruangan (ketentuan Dokumentasi Bulanan revitsd.kemendikdasmen.go.id) ----------
+   Folder utama Google Drive "VIDEO_REVITSD_<persen>" berisi subfolder per nama ruangan;
+   tiap subfolder minimal 4 file rekaman video ASLI (tanpa edit) berdurasi 5–10 detik. */
+const RV_MIN = 4, RV_MIN_SEC = 5, RV_MAX_SEC = 10;
+let rvStage = null;
+try { const x = localStorage.getItem("kka-rvstage"); if (x != null) rvStage = +x; } catch (e) {}
+const rvSt = () => (rvStage != null && STAGES.includes(rvStage) ? rvStage : view);
+const roomClips = (pid, st) => [...videos.entries()].filter(([, v]) => v.room === pid && v.st === st).sort((a, b) => a[1].t - b[1].t);
+const rvFolder = st => `VIDEO_REVITSD_${st}`;
+const rvName = (p, i, v) => `${two(i + 1)} - ${clean(p.nama)}.${v.ext || "mp4"}`;
+function renderRoomVid() {
+  const st = rvSt();
+  $("rvStage").innerHTML = STAGES.map(x => `<option value="${x}">${esc(stageName(x))}</option>`).join("");
+  $("rvStage").value = String(st);
+  $("rvFolder").textContent = rvFolder(st);
+  let done = 0;
+  $("rvList").innerHTML = paket.map(p => {
+    const clips = roomClips(p.id, st), n = clips.length, ok = n >= RV_MIN; if (ok) done++;
+    const allUp = n && clips.every(([, v]) => v.up);
+    return `<div class="rvroom${ok ? " ok" : ""}">
+      <div class="rvhead"><b>${esc(p.nama)}</b><span class="rvcount">${n}/${RV_MIN} video</span>${allUp ? '<small class="okc">✓ Drive</small>' : ""}</div>
+      ${n ? `<div class="rvclips">${clips.map(([k, v], i) => `<button type="button" class="rvclip" data-rvplay="${esc(k)}" aria-label="Putar video ${i + 1}">${two(i + 1)}<small>${Math.round(v.dur || 0)} dtk</small></button>`).join("")}</div>` : ""}
+      <div class="acts"><button class="btn${ok ? "" : " primary"}" type="button" data-rvrec="${esc(p.id)}">${n ? "Rekam lagi" : "Rekam 4 video"}</button>
+      <button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" ${n ? "" : "disabled"}>Unggah ke Drive</button></div></div>`;
+  }).join("");
+  $("rvSum").textContent = `${done}/${paket.length} ruangan lengkap (min. ${RV_MIN} video @ ${RV_MIN_SEC}–${RV_MAX_SEC} detik)`;
+}
+$("rvStage").addEventListener("change", e => { rvStage = +e.target.value; try { localStorage.setItem("kka-rvstage", rvStage); } catch (er) {} renderRoomVid(); });
+function recordRoom(p, st) {
+  if (!profil.nama) { toast("Isi nama sekolah dan NPSN dulu."); return; }
+  refreshGps();
+  const clipNo = () => roomClips(p.id, st).length + 1;
+  KKAVid.openRecorder({
+    title: `${p.nama} · ${stageName(st)}`, titleFn: () => `${p.nama} · video ${clipNo()}${clipNo() <= RV_MIN ? "/" + RV_MIN : ""}`,
+    multi: true, minSec: RV_MIN_SEC, maxSec: RV_MAX_SEC,
+    audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO PER RUANGAN",
+    address: vidAddress,
+    onSaved: v => {
+      const n = clipNo();
+      saveVideo({ ...v, title: `${p.nama} · video ${n} · ${stageName(st)}`, room: p.id, st },
+        n >= RV_MIN ? `Video ${n} tersimpan. ${p.nama} sudah ${n} video — boleh tutup kamera (✕).` : `Video ${n}/${RV_MIN} tersimpan. Pindah sudut, lalu rekam video berikutnya.`);
+    },
+    onError: m => toast(m),
+    onUnsupported: () => toast("Perekam di aplikasi tidak didukung HP ini."),
+  });
+}
+$("rvList").addEventListener("click", e => {
+  const r = e.target.closest("[data-rvrec]"), sh = e.target.closest("[data-rvshare]"), pl = e.target.closest("[data-rvplay]");
+  if (r) { const p = paket.find(x => x.id === r.dataset.rvrec); if (p) recordRoom(p, rvSt()); }
+  if (sh) {
+    const p = paket.find(x => x.id === sh.dataset.rvshare), st = rvSt(), clips = roomClips(p.id, st);
+    if (!clips.length) return;
+    if (clips.length < RV_MIN) toast(`Baru ${clips.length} video. Ketentuan minimal ${RV_MIN} video per ruangan.`);
+    const files = clips.map(([, v], i) => new File([v.blob], rvName(p, i, v), { type: v.mime || v.blob.type, lastModified: v.t }));
+    if (!navigator.share || !navigator.canShare || !navigator.canShare({ files: files.slice(0, 10) })) return toast("HP/browser ini belum mendukung kirim langsung ke Drive.");
+    navigator.share({ files: files.slice(0, 10), title: `${p.nama} · ${rvFolder(st)}` }).then(() => {
+      const now = Date.now(); clips.slice(0, 10).forEach(([k, v]) => { v.up = now; persistVid(k); });
+      render(); toast(`${Math.min(files.length, 10)} video ${p.nama} dibagikan. Pastikan masuk folder ${rvFolder(st)} › ${p.nama}.`);
+    }).catch(er => { if (er && er.name !== "AbortError") toast("Gagal membuka menu Bagikan: " + er.message); });
+  }
+  if (pl) { // putar klip di dalam kartu ruang, dengan tombol hapus bila klip keliru
+    const k = pl.dataset.rvplay, v = videos.get(k), card = pl.closest(".rvroom"); if (!v) return;
+    if (!v.url) v.url = URL.createObjectURL(v.blob);
+    card.querySelectorAll(".rvclip").forEach(b => b.classList.toggle("on", b === pl));
+    let box = card.querySelector(".rvplay");
+    if (!box) { box = document.createElement("div"); box.className = "rvplay"; card.querySelector(".rvclips").after(box); }
+    box.innerHTML = `<video src="${v.url}" controls autoplay playsinline></video>
+      <div class="acts"><button class="btn" type="button" data-rvdl="${esc(k)}">Unduh</button><button class="btn ghost" type="button" data-rvdel="${esc(k)}">Hapus video ${pl.firstChild.textContent}</button></div>`;
+  }
+  const dl = e.target.closest("[data-rvdl]"), del = e.target.closest("[data-rvdel]");
+  if (dl) { const v = videos.get(dl.dataset.rvdl); download(`${clean(v.title || "video")}.${v.ext || "mp4"}`, v.blob); }
+  if (del) {
+    if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
+    const k = del.dataset.rvdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url);
+    videos.delete(k); dbPut(k, null); render(); toast("Video dihapus. Nomor video berikutnya menyesuaikan.");
+  }
+});
+function vidAddress(g) {
+  if (profil.alamat && profil.alamat.trim()) return profil.alamat.trim();
+  if (!g || !window.KKAGeo) return profil.wil || "";
+  const c = KKAGeo.cached(g.lat, g.lng);
+  if (!c && navigator.onLine && !vidAddrBusy) { vidAddrBusy = true; KKAGeo.reverse(g.lat, g.lng).finally(() => (vidAddrBusy = false)); }
+  return c || profil.wil || "";
 }
 function renderVid() {
+  renderRoomVid();
   $("vidTitleList").innerHTML = [...STAGES.map(st => `Keliling bangunan – ${stageName(st).toLowerCase()}`), "Kegiatan pekerjaan berlangsung", "Serah terima"]
     .map(t => `<option value="${esc(t)}">`).join("");
-  const keys = [...videos.keys()].sort((a, b) => videos.get(b).t - videos.get(a).t);
+  const keys = [...videos.keys()].filter(k => !videos.get(k).room).sort((a, b) => videos.get(b).t - videos.get(a).t);
   $("vidList").innerHTML = keys.length ? "" : `<p class="hint empty">Belum ada video. Rekam di lokasi atau buat video laporan dari foto.</p>`;
   $("vidList").innerHTML += keys.map(k => {
     const v = videos.get(k);
     if (!v.url) v.url = URL.createObjectURL(v.blob);
-    return `<div class="viditem"><video src="${v.url}" controls playsinline preload="metadata"></video>
+    return `<div class="viditem" data-vkey="${esc(k)}"><video src="${v.url}" controls playsinline preload="metadata"></video>
       <div class="meta"><b>${esc(v.title || "Video")}</b><small>${tgl(v.t)} ${jam(v.t)} · ${fmtDur(v.dur || 0)} · ${(v.blob.size / 1048576).toFixed(1)} MB</small>${v.up ? '<small class="okc">✓ Drive</small>' : ""}</div>
       <div class="acts"><button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah ke Drive</button>
       <button class="btn" type="button" data-vdl="${esc(k)}">Unduh</button>
@@ -785,21 +873,13 @@ $("vidList").addEventListener("click", e => {
 });
 
 // Rekam video di lokasi
-let vidAddrBusy = false;
 $("vidRec").addEventListener("click", () => {
   const title = $("vidTitle").value.trim() || `Keliling bangunan – ${stageName(0).toLowerCase()}`;
   if (!profil.nama) { toast("Isi nama sekolah dan NPSN dulu."); return; }
   refreshGps();
   KKAVid.openRecorder({
     title, audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
-    // Alamat: isian manual, atau alamat tersimpan dari lokasi; dicari di latar bila belum ada
-    address: g => {
-      if (profil.alamat && profil.alamat.trim()) return profil.alamat.trim();
-      if (!g || !window.KKAGeo) return profil.wil || "";
-      const c = KKAGeo.cached(g.lat, g.lng);
-      if (!c && navigator.onLine && !vidAddrBusy) { vidAddrBusy = true; KKAGeo.reverse(g.lat, g.lng).finally(() => (vidAddrBusy = false)); }
-      return c || profil.wil || "";
-    },
+    address: vidAddress,
     onSaved: v => saveVideo({ ...v, title }),
     onError: m => toast(m),
     onUnsupported: () => { toast("Perekam di aplikasi tidak didukung HP ini. Memakai kamera video bawaan (tanpa cap)."); $("vidPicker").dataset.title = title; $("vidPicker").value = ""; $("vidPicker").click(); },

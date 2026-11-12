@@ -77,8 +77,17 @@
 
   <!-- ===== Layar: Video ===== -->
   <section class="screen" id="scrVid" hidden>
+    <section class="card-s" id="rvSec" aria-labelledby="hRv">
+      <h2 id="hRv">Video per ruangan <span class="tagw">wajib Drive</span></h2>
+      <p class="hint" style="margin-top:0">Ketentuan Dokumentasi Bulanan: folder utama Google Drive berisi <b>subfolder per nama ruangan</b>, tiap subfolder minimal <b>4 rekaman video asli</b> (tanpa edit) berdurasi <b>5–10 detik</b>.</p>
+      <label class="f">Tahap<select id="rvStage"></select></label>
+      <p class="rvpath">Drive: <b id="rvFolder">VIDEO_REVITSD_0</b> › <i>nama ruangan</i> › 01.mp4, 02.mp4 …</p>
+      <p class="hint" id="rvSum"></p>
+      <div class="rvlist" id="rvList"></div>
+      <p class="hint">Rekam tiap video dari sudut berbeda (depan, samping, dalam, detail pekerjaan). Rekaman berhenti sendiri di 10 detik; tombol berhenti aktif setelah 5 detik. Kamera tetap terbuka untuk video berikutnya, tutup dengan ✕ bila sudah cukup.</p>
+    </section>
     <section class="card-s" id="vidSec" aria-labelledby="hVid">
-      <h2 id="hVid">Rekam video di lokasi</h2>
+      <h2 id="hVid">Video bebas (keliling bangunan)</h2>
       <label class="f">Judul video<input type="text" id="vidTitle" list="vidTitleList" placeholder="mis. Keliling bangunan – kondisi awal 0%" autocomplete="off"></label>
       <datalist id="vidTitleList"></datalist>
       <label class="chk"><input type="checkbox" id="vidAudio" checked> Rekam suara (untuk narasi)</label>
@@ -86,7 +95,7 @@
       <p class="hint">HP dimiringkan (landscape), mulai dari tampak depan, berjalan pelan memutari bangunan. Durasi 1–3 menit (maks. 5 menit). Horizon diluruskan otomatis; cap sekolah, tanggal, jam, dan GPS tercetak di video.</p>
     </section>
     <section class="card-s">
-      <h2>Video laporan dari foto</h2>
+      <h2>Video laporan dari foto <span class="tagw soft">untuk medsos</span></h2>
       <div class="row2">
         <label class="f">Isi video<select id="mkScope"></select></label>
         <label class="f mk-sec">Detik/foto<select id="mkSec"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>

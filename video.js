@@ -57,7 +57,7 @@
     rec = { opts: o, chunks: [], level: 0, recording: false };
     const sensorP = S() ? S().start() : Promise.resolve();
     $("vr").hidden = false; document.documentElement.classList.add("vf-open");
-    $("vrTitle").textContent = o.title.toUpperCase();
+    $("vrTitle").textContent = (o.titleFn ? o.titleFn() : o.title).toUpperCase();
     setMsg("wait", "Membuka kamera…"); setRecUI(false);
     let stream;
     const video = { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } };
@@ -150,12 +150,17 @@
     else if (shake > 35) { st = "no"; m = "Terlalu cepat. Gerakkan HP lebih pelan."; }
     else if (p && Math.abs(p.level) >= 12) { st = "no"; m = "HP terlalu miring. Tegakkan sedikit."; }
     else if (p && Math.abs(p.pitch) > 30) { st = "no"; m = p.pitch > 0 ? "HP terlalu menunduk." : "HP terlalu mendongak."; }
-    else m = rec.recording ? "Bagus — terus berjalan pelan." : "Siap merekam. Ketuk tombol merah.";
+    else {
+      const min = rec.opts.minSec || 0, el = rec.recording ? (Date.now() - rec.t0) / 1000 : 0;
+      m = !rec.recording ? "Siap merekam. Ketuk tombol merah."
+        : min && el < min ? `Terus rekam — minimal ${min} detik.` : rec.opts.maxSec ? "Bagus. Berhenti sendiri di " + rec.opts.maxSec + " detik." : "Bagus — terus berjalan pelan.";
+    }
     setMsg(st, m);
     if (rec.recording) {
       const sec = (Date.now() - rec.t0) / 1000;
-      $("vrTime").textContent = "● " + mmss(sec) + " / " + mmss(MAX_SEC);
-      if (sec >= MAX_SEC) stopRec();
+      const max = rec.opts.maxSec || MAX_SEC, min = rec.opts.minSec || 0;
+      $("vrTime").textContent = "● " + mmss(sec) + " / " + mmss(max) + (min && sec < min ? ` · min ${min} dtk` : "");
+      if (sec >= max) stopRec();
     }
   }
 
@@ -176,9 +181,15 @@
     r.ondataavailable = e => { if (e.data && e.data.size) rec.chunks.push(e.data); };
     r.onstop = () => {
       const blob = new Blob(rec.chunks, { type: rec.mime.split(";")[0] });
-      const dur = (Date.now() - rec.t0) / 1000, o = rec.opts;
-      closeRecorder();
-      o.onSaved({ blob, mime: blob.type, dur, t: Date.now() - dur * 1000, ext: extOf(blob.type) });
+      const dur = Math.min((Date.now() - rec.t0) / 1000, rec.opts.maxSec || MAX_SEC), o = rec.opts;
+      cs.getVideoTracks().forEach(t => t.stop());
+      const v = { blob, mime: blob.type, dur, t: Date.now() - dur * 1000, ext: extOf(blob.type) };
+      if (o.multi) { // klip pendek berturut-turut: kamera tetap terbuka untuk klip berikutnya
+        rec.chunks = []; o.onSaved(v);
+        if (o.titleFn) $("vrTitle").textContent = o.titleFn().toUpperCase();
+        return;
+      }
+      closeRecorder(); o.onSaved(v);
     };
     r.start(1000);
     rec.recorder = r; rec.recording = true; rec.t0 = Date.now();
@@ -186,6 +197,8 @@
   }
   function stopRec() {
     if (!rec || !rec.recording) return;
+    const min = rec.opts.minSec || 0, sec = (Date.now() - rec.t0) / 1000;
+    if (min && sec < min) { setMsg("no", `Terus rekam — minimal ${min} detik (baru ${Math.floor(sec)} dtk).`); return; }
     rec.recording = false; setRecUI(false);
     setMsg("wait", "Menyimpan video…");
     try { rec.recorder.stop(); } catch (e) {}

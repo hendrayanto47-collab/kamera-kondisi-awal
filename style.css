@@ -328,3 +328,22 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .lockrow .hint{margin:0}
 #gpsCard.locked #pKoor,#gpsCard.locked #pAlamat{opacity:.75;border-style:dashed}
 #gpsCard.locked #lockBtn{border-color:var(--ok);color:var(--ok)}
+.tagw{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--warn);color:#fff;border-radius:99px;padding:2px 8px;vertical-align:middle;margin-left:6px}
+.tagw.soft{background:var(--sky)}
+.rvpath{font-family:var(--f-mono);font-size:12px;margin:10px 0 0;overflow-wrap:anywhere;color:var(--muted)}
+.rvpath b{color:var(--ink)}
+.rvlist{display:grid;gap:10px;margin-top:12px}
+.rvroom{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:8px;background:var(--bg)}
+.rvroom.ok{border-color:var(--ok)}
+.rvhead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.rvhead b{flex:1;min-width:0}
+.rvcount{font-family:var(--f-mono);font-size:12px;font-weight:700;color:var(--warn)}
+.rvroom.ok .rvcount{color:var(--ok)}
+.rvclips{display:flex;gap:6px;flex-wrap:wrap}
+.rvclip{font:700 13px var(--f-mono);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:4px 8px;display:grid;justify-items:center;cursor:pointer}
+.rvclip small{font-weight:400;font-size:10px;color:var(--muted)}
+.rvroom .acts{display:flex;gap:8px;flex-wrap:wrap}
+.rvclip.on{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.rvclip.on small{color:var(--accent-ink)}
+.rvplay{display:grid;gap:8px}
+.rvplay video{width:100%;max-width:100%;aspect-ratio:16/9;background:#000;border-radius:6px}
