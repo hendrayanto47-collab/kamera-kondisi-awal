@@ -347,3 +347,6 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .rvclip.on small{color:var(--accent-ink)}
 .rvplay{display:grid;gap:8px}
 .rvplay video{width:100%;max-width:100%;aspect-ratio:16/9;background:#000;border-radius:6px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;justify-self:start}
+.seg button{font:600 13px var(--f-sans, inherit);border:0;background:var(--surface);color:var(--ink);padding:6px 12px;cursor:pointer}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}

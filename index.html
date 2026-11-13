@@ -92,13 +92,14 @@
       <datalist id="vidTitleList"></datalist>
       <label class="chk"><input type="checkbox" id="vidAudio" checked> Rekam suara (untuk narasi)</label>
       <button class="btn primary big" id="vidRec" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/></svg> Rekam video</button>
-      <p class="hint">HP dimiringkan (landscape), mulai dari tampak depan, berjalan pelan memutari bangunan. Durasi 1–3 menit (maks. 5 menit). Horizon diluruskan otomatis; cap sekolah, tanggal, jam, dan GPS tercetak di video.</p>
+      <p class="hint">HP dimiringkan (landscape), mulai dari tampak depan, berjalan pelan memutari bangunan. Durasi 1–3 menit (maks. 5 menit). Horizon diluruskan otomatis. Stamp mengikuti Pengaturan → Stamp di video (bawaan: dua versi, dengan stamp dan polos).</p>
     </section>
     <section class="card-s">
       <h2>Satu video utuh <span class="tagw soft">untuk medsos</span></h2>
       <p class="hint" style="margin-top:0">Gabungkan semua video ruangan (atau foto) menjadi satu video dengan judul pembuka, nama tiap ruangan, label tahap, dan penutup. Hasilnya bisa dibagikan ke YouTube, Instagram, TikTok, Facebook, atau WhatsApp.</p>
       <div class="row2">
         <label class="f">Isi video<select id="mkScope"></select></label>
+        <label class="f mk-sec" id="mkVerWrap" hidden>Versi video<select id="mkVer"><option value="polos">Polos</option><option value="stamp">Dengan stamp</option></select></label>
         <label class="f mk-sec" id="mkClipWrap" hidden>Detik/video<select id="mkClip"><option value="4">4</option><option value="6" selected>6</option><option value="full">Penuh</option></select></label>
         <label class="f mk-sec" id="mkSecWrap">Detik/foto<select id="mkSec"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
       </div>
@@ -143,6 +144,7 @@
         <label class="f">Gaya cap foto<select id="pGaya"><option value="lengkap">Lengkap: peta & alamat (seperti kamera GPS)</option><option value="ringkas">Ringkas: 3 baris</option></select></label>
         <label class="f">Peta di cap<select id="pPeta"><option value="satelit">Satelit</option><option value="jalan">Jalan</option></select></label>
       </div>
+      <label class="f">Stamp di video<select id="pVStamp"><option value="both">Dua versi sekaligus: dengan stamp + polos</option><option value="stamp">Dengan stamp saja</option><option value="plain">Polos saja (tanpa stamp)</option></select></label>
       <div class="restamp"><span id="oldInfo"></span><button class="btn" id="oldBtn2" type="button"></button></div>
       <label class="chk"><input type="checkbox" id="optLive" checked> Kamera dengan arahan langsung</label>
       <label class="chk"><input type="checkbox" id="optGuide" checked> Panduan posisi sebelum memotret</label>

@@ -73,6 +73,9 @@
     await new Promise(r => (v.videoWidth ? r() : v.addEventListener("loadedmetadata", r, { once: true })));
     rec.canvas = $("vrCanvas"); rec.canvas.width = W; rec.canvas.height = H;
     rec.ctx = rec.canvas.getContext("2d");
+    // Mode "both": selain video bercap, salinan bingkai tanpa cap direkam bersamaan (dua file dari satu rekaman)
+    rec.mode = o.stampMode || "stamp";
+    if (rec.mode === "both") { rec.plain = document.createElement("canvas"); rec.plain.width = W; rec.plain.height = H; rec.pctx = rec.plain.getContext("2d"); }
     keepAwake(true);
     const loop = () => { if (!rec) return; drawFrame(); rec.raf = requestAnimationFrame(loop); };
     loop();
@@ -96,8 +99,9 @@
     x.rotate((turn + rec.level) * Math.PI / 180);
     x.drawImage(v, -vw * sc / 2, -vh * sc / 2, vw * sc, vh * sc);
     x.restore();
+    if (rec.pctx) rec.pctx.drawImage(rec.canvas, 0, 0); // versi polos: bingkai sebelum cap ditempel
     // Cap (disiapkan sekali per detik di refreshOverlay) ditempel di bagian bawah setiap bingkai
-    if (rec.overlay) x.drawImage(rec.overlay, 0, H - rec.overlay.height);
+    if (rec.overlay && rec.mode !== "plain") x.drawImage(rec.overlay, 0, H - rec.overlay.height);
     // Pratinjau: kanvas diputar agar tampak tegak bagi operator yang memegang HP miring
     const cv = rec.canvas, wrap = $("vr");
     const vwp = wrap.clientWidth, vhp = wrap.clientHeight - 150;
@@ -169,30 +173,40 @@
     $("vrRec").setAttribute("aria-label", on ? "Berhenti merekam" : "Mulai merekam");
     $("vrTime").hidden = !on; $("vrClose").disabled = on;
   }
-  function startRec() {
+  function makeRecorder(canvas, audio) {
     const mime = pickMime();
-    const cs = rec.canvas.captureStream(FPS);
-    if (rec.opts.audio) rec.stream.getAudioTracks().forEach(t => cs.addTrack(t));
+    const cs = canvas.captureStream(FPS);
+    if (audio) rec.stream.getAudioTracks().forEach(t => cs.addTrack(audio === "clone" ? t.clone() : t));
     let r;
     try { r = new MediaRecorder(cs, mime ? { mimeType: mime, videoBitsPerSecond: 2500000 } : { videoBitsPerSecond: 2500000 }); }
     catch (e) { r = new MediaRecorder(cs); }
-    rec.mime = r.mimeType || mime || "video/webm";
-    rec.chunks = [];
-    r.ondataavailable = e => { if (e.data && e.data.size) rec.chunks.push(e.data); };
-    r.onstop = () => {
-      const blob = new Blob(rec.chunks, { type: rec.mime.split(";")[0] });
+    const out = { r, cs, chunks: [], mime: r.mimeType || mime || "video/webm" };
+    r.ondataavailable = e => { if (e.data && e.data.size) out.chunks.push(e.data); };
+    out.done = new Promise(res => (r.onstop = () => {
+      cs.getTracks().forEach(t => { if (t.kind === "video" || audio === "clone") t.stop(); });
+      res(new Blob(out.chunks, { type: out.mime.split(";")[0] }));
+    }));
+    return out;
+  }
+  function startRec() {
+    const a = rec.opts.audio;
+    const main = makeRecorder(rec.canvas, a ? "share" : null);
+    const plain = rec.plain ? makeRecorder(rec.plain, a ? "clone" : null) : null;
+    rec.mime = main.mime;
+    Promise.all([main.done, plain ? plain.done : null]).then(([blob, pblob]) => {
       const dur = Math.min((Date.now() - rec.t0) / 1000, rec.opts.maxSec || MAX_SEC), o = rec.opts;
-      cs.getVideoTracks().forEach(t => t.stop());
       const v = { blob, mime: blob.type, dur, t: Date.now() - dur * 1000, ext: extOf(blob.type) };
+      if (pblob && pblob.size) v.plain = pblob;
+      if (rec.mode === "plain") v.nostamp = true;
       if (o.multi) { // klip pendek berturut-turut: kamera tetap terbuka untuk klip berikutnya
-        rec.chunks = []; o.onSaved(v);
+        o.onSaved(v);
         if (o.titleFn) $("vrTitle").textContent = o.titleFn().toUpperCase();
         return;
       }
       closeRecorder(); o.onSaved(v);
-    };
-    r.start(1000);
-    rec.recorder = r; rec.recording = true; rec.t0 = Date.now();
+    });
+    main.r.start(1000); if (plain) plain.r.start(1000);
+    rec.recorder = main.r; rec.recorder2 = plain ? plain.r : null; rec.recording = true; rec.t0 = Date.now();
     setRecUI(true);
   }
   function stopRec() {
@@ -202,6 +216,7 @@
     rec.recording = false; setRecUI(false);
     setMsg("wait", "Menyimpan video…");
     try { rec.recorder.stop(); } catch (e) {}
+    try { if (rec.recorder2) rec.recorder2.stop(); } catch (e) {}
   }
   function closeRecorder() {
     if (!rec) return;

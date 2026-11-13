@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.1.0 · 12 Nov 2026";
+const APP_VERSION = "2.2.0 · 14 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -89,7 +89,7 @@ const photos = new Map();
 const videos = new Map();
 function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
-  dbPut(k, { blob: v.blob, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
+  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
 const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath"];
 function persist(k) {
@@ -740,6 +740,14 @@ let vidAddrBusy = false;
 let vidAudio = true;
 try { vidAudio = localStorage.getItem("kka-vaudio") !== "0"; } catch (e) {}
 $("vidAudio").checked = vidAudio;
+/* Stamp di video: "both" = satu rekaman menghasilkan dua file (bercap + polos), "stamp", atau "plain" */
+let vidStamp = "both";
+try { vidStamp = localStorage.getItem("kka-vstamp") || "both"; } catch (e) {}
+$("pVStamp").value = vidStamp;
+$("pVStamp").addEventListener("change", e => { vidStamp = e.target.value; try { localStorage.setItem("kka-vstamp", vidStamp); } catch (er) {}
+  toast(vidStamp === "both" ? "Setiap rekaman menyimpan 2 file: dengan stamp dan polos." : vidStamp === "plain" ? "Video direkam polos tanpa stamp." : "Video direkam dengan stamp."); });
+const verBlob = (v, ver) => (ver === "polos" ? v.plain || (v.nostamp ? v.blob : null) : v.nostamp ? null : v.blob);
+const verTag = v => (v.plain ? "2 versi" : v.nostamp ? "polos" : "stamp");
 $("vidAudio").addEventListener("change", e => { vidAudio = e.target.checked; try { localStorage.setItem("kka-vaudio", vidAudio ? "1" : "0"); } catch (e) {} });
 
 function saveVideo(v, msg) {
@@ -758,7 +766,7 @@ try { const x = localStorage.getItem("kka-rvstage"); if (x != null) rvStage = +x
 const rvSt = () => (rvStage != null && STAGES.includes(rvStage) ? rvStage : view);
 const roomClips = (pid, st) => [...videos.entries()].filter(([, v]) => v.room === pid && v.st === st).sort((a, b) => a[1].t - b[1].t);
 const rvFolder = st => `VIDEO_REVITSD_${st}`;
-const rvName = (p, i, v) => `${two(i + 1)} - ${clean(p.nama)}.${v.ext || "mp4"}`;
+const rvName = (p, i, v, ver) => `${two(i + 1)} - ${clean(p.nama)}${ver === "polos" && v.plain ? " - polos" : ""}.${v.ext || "mp4"}`;
 function renderRoomVid() {
   const st = rvSt();
   $("rvStage").innerHTML = STAGES.map(x => `<option value="${x}">${esc(stageName(x))}</option>`).join("");
@@ -767,12 +775,14 @@ function renderRoomVid() {
   let done = 0;
   $("rvList").innerHTML = paket.map(p => {
     const clips = roomClips(p.id, st), n = clips.length, ok = n >= RV_MIN; if (ok) done++;
-    const allUp = n && clips.every(([, v]) => v.up);
+    const allUp = n && clips.every(([, v]) => v.up || v.upPlain);
+    const hasP = clips.some(([, v]) => v.plain || v.nostamp), hasS = clips.some(([, v]) => !v.nostamp);
     return `<div class="rvroom${ok ? " ok" : ""}">
       <div class="rvhead"><b>${esc(p.nama)}</b><span class="rvcount">${n}/${RV_MIN} video</span>${allUp ? '<small class="okc">✓ Drive</small>' : ""}</div>
-      ${n ? `<div class="rvclips">${clips.map(([k, v], i) => `<button type="button" class="rvclip" data-rvplay="${esc(k)}" aria-label="Putar video ${i + 1}">${two(i + 1)}<small>${Math.round(v.dur || 0)} dtk</small></button>`).join("")}</div>` : ""}
+      ${n ? `<div class="rvclips">${clips.map(([k, v], i) => `<button type="button" class="rvclip" data-rvplay="${esc(k)}" aria-label="Putar video ${i + 1}">${two(i + 1)}<small>${Math.round(v.dur || 0)} dtk${v.plain ? " · 2v" : v.nostamp ? " · polos" : ""}</small></button>`).join("")}</div>` : ""}
       <div class="acts"><button class="btn${ok ? "" : " primary"}" type="button" data-rvrec="${esc(p.id)}">${n ? "Rekam lagi" : "Rekam 4 video"}</button>
-      <button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" ${n ? "" : "disabled"}>Unggah ke Drive</button></div></div>`;
+      ${hasP && hasS ? `<button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="stamp">Unggah (stamp)</button><button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="polos">Unggah (polos)</button>`
+        : `<button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="${hasP ? "polos" : "stamp"}" ${n ? "" : "disabled"}>Unggah ke Drive</button>`}</div></div>`;
   }).join("");
   $("rvSum").textContent = `${done}/${paket.length} ruangan lengkap (min. ${RV_MIN} video @ ${RV_MIN_SEC}–${RV_MAX_SEC} detik)`;
 }
@@ -783,7 +793,7 @@ function recordRoom(p, st) {
   const clipNo = () => roomClips(p.id, st).length + 1;
   KKAVid.openRecorder({
     title: `${p.nama} · ${stageName(st)}`, titleFn: () => `${p.nama} · video ${clipNo()}${clipNo() <= RV_MIN ? "/" + RV_MIN : ""}`,
-    multi: true, minSec: RV_MIN_SEC, maxSec: RV_MAX_SEC,
+    multi: true, minSec: RV_MIN_SEC, maxSec: RV_MAX_SEC, stampMode: vidStamp,
     audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO PER RUANGAN",
     address: vidAddress,
     onSaved: v => {
@@ -799,14 +809,15 @@ $("rvList").addEventListener("click", e => {
   const r = e.target.closest("[data-rvrec]"), sh = e.target.closest("[data-rvshare]"), pl = e.target.closest("[data-rvplay]");
   if (r) { const p = paket.find(x => x.id === r.dataset.rvrec); if (p) recordRoom(p, rvSt()); }
   if (sh) {
-    const p = paket.find(x => x.id === sh.dataset.rvshare), st = rvSt(), clips = roomClips(p.id, st);
-    if (!clips.length) return;
+    const ver = sh.dataset.ver || "stamp", p = paket.find(x => x.id === sh.dataset.rvshare), st = rvSt();
+    const clips = roomClips(p.id, st).map(([k, v], i) => [k, v, i]).filter(([, v]) => verBlob(v, ver));
+    if (!clips.length) return toast(`Belum ada video versi ${ver}.`);
     if (clips.length < RV_MIN) toast(`Baru ${clips.length} video. Ketentuan minimal ${RV_MIN} video per ruangan.`);
-    const files = clips.map(([, v], i) => new File([v.blob], rvName(p, i, v), { type: v.mime || v.blob.type, lastModified: v.t }));
+    const files = clips.map(([, v, i]) => new File([verBlob(v, ver)], rvName(p, i, v, ver), { type: v.mime || v.blob.type, lastModified: v.t }));
     if (!navigator.share || !navigator.canShare || !navigator.canShare({ files: files.slice(0, 10) })) return toast("HP/browser ini belum mendukung kirim langsung ke Drive.");
     navigator.share({ files: files.slice(0, 10), title: `${p.nama} · ${rvFolder(st)}` }).then(() => {
-      const now = Date.now(); clips.slice(0, 10).forEach(([k, v]) => { v.up = now; persistVid(k); });
-      render(); toast(`${Math.min(files.length, 10)} video ${p.nama} dibagikan. Pastikan masuk folder ${rvFolder(st)} › ${p.nama}.`);
+      const now = Date.now(); clips.slice(0, 10).forEach(([k, v]) => { if (ver === "polos" && v.plain) v.upPlain = now; else v.up = now; persistVid(k); });
+      render(); toast(`${Math.min(files.length, 10)} video ${p.nama} (${ver}) dibagikan. Pastikan masuk folder ${rvFolder(st)} › ${p.nama}.`);
     }).catch(er => { if (er && er.name !== "AbortError") toast("Gagal membuka menu Bagikan: " + er.message); });
   }
   if (pl) { // putar klip di dalam kartu ruang, dengan tombol hapus bila klip keliru
@@ -815,14 +826,20 @@ $("rvList").addEventListener("click", e => {
     card.querySelectorAll(".rvclip").forEach(b => b.classList.toggle("on", b === pl));
     let box = card.querySelector(".rvplay");
     if (!box) { box = document.createElement("div"); box.className = "rvplay"; card.querySelector(".rvclips").after(box); }
+    if (v.plain && !v.purl) v.purl = URL.createObjectURL(v.plain);
     box.innerHTML = `<video src="${v.url}" controls autoplay playsinline></video>
+      ${v.plain ? `<div class="seg"><button type="button" class="on" data-rvver="${v.url}">Dengan stamp</button><button type="button" data-rvver="${v.purl}">Polos</button></div>` : ""}
       <div class="acts"><button class="btn" type="button" data-rvdl="${esc(k)}">Unduh</button><button class="btn ghost" type="button" data-rvdel="${esc(k)}">Hapus video ${pl.firstChild.textContent}</button></div>`;
   }
+  const vb = e.target.closest("[data-rvver]");
+  if (vb) { const box = vb.closest(".rvplay"); box.querySelector("video").src = vb.dataset.rvver; box.querySelector("video").play().catch(() => {});
+    box.querySelectorAll("[data-rvver]").forEach(b => b.classList.toggle("on", b === vb)); }
   const dl = e.target.closest("[data-rvdl]"), del = e.target.closest("[data-rvdel]");
-  if (dl) { const v = videos.get(dl.dataset.rvdl); download(`${clean(v.title || "video")}.${v.ext || "mp4"}`, v.blob); }
+  if (dl) { const v = videos.get(dl.dataset.rvdl); download(`${clean(v.title || "video")}.${v.ext || "mp4"}`, v.blob);
+    if (v.plain) setTimeout(() => download(`${clean(v.title || "video")} - polos.${v.ext || "mp4"}`, v.plain), 800); }
   if (del) {
     if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
-    const k = del.dataset.rvdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url);
+    const k = del.dataset.rvdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url); if (v && v.purl) URL.revokeObjectURL(v.purl);
     videos.delete(k); dbPut(k, null); render(); toast("Video dihapus. Nomor video berikutnya menyesuaikan.");
   }
 });
@@ -843,8 +860,9 @@ function renderVid() {
     const v = videos.get(k);
     if (!v.url) v.url = URL.createObjectURL(v.blob);
     return `<div class="viditem" data-vkey="${esc(k)}"><video src="${v.url}" controls playsinline preload="metadata"></video>
-      <div class="meta"><b>${esc(v.title || "Video")}</b><small>${tgl(v.t)} ${jam(v.t)} · ${fmtDur(v.dur || 0)} · ${(v.blob.size / 1048576).toFixed(1)} MB</small>${v.up ? '<small class="okc">✓ Drive</small>' : ""}</div>
-      <div class="acts"><button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah ke Drive</button>
+      <div class="meta"><b>${esc(v.title || "Video")}</b><small>${tgl(v.t)} ${jam(v.t)} · ${fmtDur(v.dur || 0)} · ${(v.blob.size / 1048576).toFixed(1)} MB${v.plain ? ` + polos ${(v.plain.size / 1048576).toFixed(1)} MB` : v.nostamp ? " · polos" : ""}</small>${v.up || v.upPlain ? '<small class="okc">✓ Drive</small>' : ""}</div>
+      <div class="acts">${v.plain ? `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah (stamp)</button><button class="btn primary" type="button" data-vshare="${esc(k)}" data-ver="polos">Unggah (polos)</button>`
+        : `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah ke Drive</button>`}
       <button class="btn" type="button" data-vdl="${esc(k)}">Unduh</button>
       <button class="btn ghost" type="button" data-vdel="${esc(k)}">Hapus</button></div></div>`;
   }).join("");
@@ -862,13 +880,14 @@ function renderVid() {
 $("vidList").addEventListener("click", e => {
   const sh = e.target.closest("[data-vshare]"), dl = e.target.closest("[data-vdl]"), del = e.target.closest("[data-vdel]");
   if (sh) {
-    const k = sh.dataset.vshare, v = videos.get(k);
-    const f = new File([v.blob], vidName(k), { type: v.mime || v.blob.type, lastModified: v.t });
+    const k = sh.dataset.vshare, v = videos.get(k), polos = sh.dataset.ver === "polos" && v.plain;
+    const f = new File([polos ? v.plain : v.blob], polos ? vidName(k).replace(/(\.\w+)$/, " - polos$1") : vidName(k), { type: v.mime || v.blob.type, lastModified: v.t });
     if (!navigator.canShare || !navigator.canShare({ files: [f] })) return toast("HP/browser ini belum mendukung kirim langsung. Ketuk Unduh, lalu unggah lewat aplikasi Drive.");
-    navigator.share({ files: [f], title: v.title }).then(() => { v.up = Date.now(); persistVid(k); render(); toast("Video dibagikan. Periksa di Google Drive."); })
+    navigator.share({ files: [f], title: v.title }).then(() => { if (polos) v.upPlain = Date.now(); else v.up = Date.now(); persistVid(k); render(); toast("Video dibagikan. Periksa di Google Drive."); })
       .catch(er => { if (er && er.name !== "AbortError") toast("Gagal membuka menu Bagikan: " + er.message); });
   }
-  if (dl) { const k = dl.dataset.vdl; download(vidName(k), videos.get(k).blob); }
+  if (dl) { const k = dl.dataset.vdl, v = videos.get(k); download(vidName(k), v.blob);
+    if (v.plain) setTimeout(() => download(vidName(k).replace(/(\.\w+)$/, " - polos$1"), v.plain), 800); }
   if (del) {
     if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
     const k = del.dataset.vdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url);
@@ -882,7 +901,7 @@ $("vidRec").addEventListener("click", () => {
   if (!profil.nama) { toast("Isi nama sekolah dan NPSN dulu."); return; }
   refreshGps();
   KKAVid.openRecorder({
-    title, audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
+    title, stampMode: vidStamp, audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
     address: vidAddress,
     onSaved: v => saveVideo({ ...v, title }),
     onError: m => toast(m),
@@ -913,7 +932,7 @@ function reportScenes(scope, sec) {
       head(p.grup.toUpperCase(), p.nama, [all ? `Tahap: ${groups.map(([st]) => st + "%").join(" → ")}` : stageName(stages[0])], 2);
       for (const [st, clips] of groups) clips.forEach(([, v], i) => {
         const d = Math.max(1, v.dur || RV_MAX_SEC);
-        sc.push({ type: "clip", blob: v.blob, sec: clipSec === "full" ? d : Math.min(d, +clipSec),
+        sc.push({ type: "clip", blob: ($("mkVer").value === "polos" && v.plain) || v.blob, sec: clipSec === "full" ? d : Math.min(d, +clipSec),
           badge: st === 0 ? "0% · KONDISI AWAL" : st === 100 ? "100% · SELESAI" : `PROGRES ${st}%`, badgeColor: badgeColor(st),
           label: `${p.nama} · ${tgl(v.t)}` });
       });
@@ -944,7 +963,7 @@ function reportScenes(scope, sec) {
 function updateEstimate() {
   const sc = reportScenes($("mkScope").value || "cmp", +$("mkSec").value);
   const clip = ($("mkScope").value || "").startsWith("rv");
-  $("mkSecWrap").hidden = clip; $("mkClipWrap").hidden = !clip;
+  $("mkSecWrap").hidden = clip; $("mkClipWrap").hidden = !clip; $("mkVerWrap").hidden = !clip;
   const n = sc.filter(s => s.type === (clip ? "clip" : "photo")).length, dur = sc.reduce((a, s) => a + s.sec, 0);
   $("mkEst").textContent = n ? `${n} ${clip ? "video" : "foto"} · durasi video ±${fmtDur(dur)}. Pembuatan butuh waktu sama dengan durasinya; biarkan layar menyala.`
     : clip ? "Belum ada video ruangan untuk pilihan ini. Rekam dulu di kartu Video per ruangan." : "Belum ada foto untuk pilihan ini.";
@@ -953,6 +972,7 @@ function updateEstimate() {
 $("mkScope").addEventListener("change", updateEstimate);
 $("mkSec").addEventListener("change", updateEstimate);
 $("mkClip").addEventListener("change", updateEstimate);
+$("mkVer").addEventListener("change", updateEstimate);
 $("mkBtn").addEventListener("click", () => {
   const scope = $("mkScope").value, sc = reportScenes(scope, +$("mkSec").value);
   const label = scope === "rv:all" ? "Video utuh – perjalanan 0% → 100% (medsos)" : scope.startsWith("rv:") ? `Video utuh – ruangan ${stageName(+scope.split(":")[1]).toLowerCase()} (medsos)`
