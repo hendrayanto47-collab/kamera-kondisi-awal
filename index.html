@@ -181,20 +181,23 @@
       </div>
     </section>
 
-    <section class="card-s" id="cloudPanel" aria-labelledby="hCloud" hidden>
-      <h2 id="hCloud">Kirim ke Supabase</h2>
-      <form id="loginForm" class="add">
-        <label class="f">Email<input type="email" id="sbEmail" autocomplete="username" required></label>
-        <label class="f">Kata sandi<input type="password" id="sbPass" autocomplete="current-password" required></label>
-        <button class="btn" id="sbLogin" type="submit">Masuk</button>
-      </form>
-      <div id="loggedIn" class="gps" hidden>
-        <span class="dot on"></span>
-        <span id="sbUser"></span>
-        <button class="mini-btn" id="sbSync" type="button">Kirim sekarang</button>
-        <button class="mini-btn" id="sbOut" type="button">Keluar</button>
+    <section class="card-s" id="cloudPanel" aria-labelledby="hCloud">
+      <h2 id="hCloud">Sinkron antar-HP (Google Drive)</h2>
+      <p class="hint" style="margin-top:0">Masuk dengan <b>akun Google yang sama</b> di semua HP. Foto &amp; video otomatis tersimpan ke folder Drive akun itu (tersusun per tahap &amp; ruangan) dan muncul di aplikasi HP lain.</p>
+      <p class="hint" id="cloudOff">Belum diaktifkan: menunggu Client ID Google dipasang di aplikasi.</p>
+      <div id="cloudLogin" hidden><button class="btn primary" id="cloudLoginBtn" type="button">Masuk dengan Google</button></div>
+      <div id="cloudIn" hidden>
+        <div class="gps"><span class="dot" id="cloudDot"></span><b id="cloudUser"></b></div>
+        <p class="hint" id="cloudState" style="margin:6px 0 10px"></p>
+        <div class="acts" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn primary" id="cloudRelogin" type="button" hidden>Masuk lagi</button>
+          <button class="btn primary" id="cloudSyncBtn" type="button">Sinkronkan sekarang</button>
+          <button class="btn ghost" id="cloudOut" type="button">Keluar</button>
+        </div>
+        <label class="f" style="margin-top:14px">Link folder untuk portal revitsd<select id="cloudFolder"></select></label>
+        <button class="btn" id="cloudLinkBtn" type="button">Buat &amp; salin link (siapa saja yang memiliki link)</button>
+        <div id="cloudLinkRow" hidden style="display:grid;gap:6px;margin-top:8px"><input type="text" id="cloudLink" readonly><a id="cloudOpen" target="_blank" rel="noopener">Buka folder di Drive ↗</a></div>
       </div>
-      <p class="hint" id="sbHint">Masuk sekali saja. Foto otomatis terkirim saat ada internet.</p>
     </section>
 
     <p class="ver">Kamera Revit SD · Versi <span id="ver"></span></p>
@@ -303,6 +306,7 @@
 
 <script src="config.js"></script>
 <script src="supabase.js"></script>
+<script src="gdrive.js"></script>
 <script src="zip.js"></script>
 <script src="check.js"></script>
 <script src="geo.js"></script>

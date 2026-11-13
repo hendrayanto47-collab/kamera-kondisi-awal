@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.2.0 · 14 Nov 2026";
+const APP_VERSION = "2.3.0 · 14 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -89,12 +89,20 @@ const photos = new Map();
 const videos = new Map();
 function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
-  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
+  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
+  if (!ph.gs) cloudSoon();
+}
+/* Catat file Drive yang harus dibuang ke Sampah Drive setelah foto/video dihapus di HP ini */
+function cloudForget(rec) {
+  if (!rec) return;
+  const ids = [rec.gid, rec.gidP].filter(Boolean); if (!ids.length) return;
+  try { const t = JSON.parse(localStorage.getItem("kka-gtomb") || "[]"); localStorage.setItem("kka-gtomb", JSON.stringify([...t, ...ids])); } catch (e) {}
+  cloudSoon();
 }
 
 /* trash: ruang yang dihapus beserta waktu hapusnya. Fotonya TIDAK dihapus sampai "Hapus permanen". */
@@ -111,6 +119,7 @@ function sortPaket() {
 }
 sortPaket();
 function saveState() {
+  cloudStateSoon();
   sortPaket();
   try { localStorage.setItem(STORE_KEY, JSON.stringify({ paket, profil, trash })); } catch (e) {}
 }
@@ -513,7 +522,7 @@ function renderPaket(st) {
           <button class="shot${ph ? " has" : ""}${ref ? " ref" : ""}" type="button" data-shoot="${esc(k)}" aria-label="${ph ? "Lihat" : "Ambil"} foto ${a.l} ${esc(p.nama)}">
             ${ph ? `<img src="${ph.url}" alt="">` : ref ? `<img src="${ref.url}" alt=""><span class="reflbl">acuan 0%</span>` : SVG[a.k]}
             <span class="cam">${ph ? "Lihat" : "Ambil foto"}</span>
-            ${ph && window.SB && SB.enabled ? `<span class="sync${ph.synced ? " ok" : ""}">${ph.synced ? "Terkirim" : "Antre"}</span>` : ""}
+            ${ph && cloudOn() ? `<span class="sync${ph.gs ? " ok" : ""}">${ph.gs ? "☁ Drive" : "Antre"}</span>` : ""}
             ${ph && ph.warn && ph.warn.length ? `<span class="warnb" title="${esc(ph.warn.join(" "))}">${ph.warn.length} catatan</span>` : ""}</button>
           <div class="slab"><span>${a.l}</span>${ph
             ? `<button type="button" data-retake="${esc(k)}">Ulangi</button>`
@@ -686,7 +695,7 @@ function restorePaket(id) {
   saveState(); render(); toast(`${item.nama} dipulihkan beserta ${paketPhotoKeys(id).length} foto.`);
 }
 function purgePaket(id) {
-  paketPhotoKeys(id).forEach(k => { const ph = photos.get(k); if (ph && ph.url) URL.revokeObjectURL(ph.url); photos.delete(k); dbPut(k, null); });
+  paketPhotoKeys(id).forEach(k => { const ph = photos.get(k); if (ph && ph.url) URL.revokeObjectURL(ph.url); cloudForget(ph); photos.delete(k); dbPut(k, null); });
   trash = trash.filter(x => x.id !== id); saveState(); render(); toast("Ruang dan fotonya dihapus permanen.");
 }
 function renderTrash() {
@@ -752,7 +761,7 @@ $("vidAudio").addEventListener("change", e => { vidAudio = e.target.checked; try
 
 function saveVideo(v, msg) {
   const k = "#vid|" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-  videos.set(k, v); persistVid(k); render();
+  v.gs = false; videos.set(k, v); persistVid(k); render(); cloudSoon();
   toast(msg || `Video tersimpan (${fmtDur(v.dur || 0)}, ${(v.blob.size / 1048576).toFixed(1)} MB).`);
   return k;
 }
@@ -840,7 +849,7 @@ $("rvList").addEventListener("click", e => {
   if (del) {
     if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
     const k = del.dataset.rvdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url); if (v && v.purl) URL.revokeObjectURL(v.purl);
-    videos.delete(k); dbPut(k, null); render(); toast("Video dihapus. Nomor video berikutnya menyesuaikan.");
+    cloudForget(v); videos.delete(k); dbPut(k, null); render(); toast("Video dihapus. Nomor video berikutnya menyesuaikan.");
   }
 });
 function vidAddress(g) {
@@ -891,7 +900,7 @@ $("vidList").addEventListener("click", e => {
   if (del) {
     if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
     const k = del.dataset.vdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url);
-    videos.delete(k); dbPut(k, null); render(); toast("Video dihapus.");
+    cloudForget(v); videos.delete(k); dbPut(k, null); render(); toast("Video dihapus.");
   }
 });
 
@@ -1143,11 +1152,11 @@ $("fixBtn").addEventListener("click", async () => {
       URL.revokeObjectURL(ph.url);
       const warn = (ph.warn || []).filter(w => !/GPS|koordinat/i.test(w)).concat("GPS HP tidak tersedia saat memotret; dicetak koordinat sekolah.");
       photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: sk.lat, lng: sk.lng, acc: null, warn,
-        synced: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
+        synced: false, gs: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
       persist(k); ok++;
     } catch (e) {}
   }
-  render(); toast(`${ok} foto diperbarui dengan koordinat sekolah.`); syncAll();
+  render(); toast(`${ok} foto diperbarui dengan koordinat sekolah.`); cloudSoon(1500);
 });
 
 // ---------- Perbaiki foto yang lokasinya salah (mis. terbaca di Malaysia) ----------
@@ -1184,12 +1193,12 @@ $("locBtn").addEventListener("click", async e => {
       URL.revokeObjectURL(ph.url);
       const warn = (ph.warn || []).filter(w => !/GPS|koordinat|Lokasi/i.test(w)).concat(ph.acc == null ? "Lokasi diperbaiki dengan koordinat sekolah yang benar." : "Lokasi HP saat memotret tidak akurat; diperbaiki dengan koordinat sekolah.");
       photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: sk.lat, lng: sk.lng, acc: null, warn, up: undefined,
-        synced: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
+        synced: false, gs: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
       persist(k); ok++;
     } catch (er) {}
   }
   restamping = false; render();
-  toast(`${ok} foto diperbaiki lokasinya. Unggah ulang ke Drive bila sebelumnya sudah terkirim.`); syncAll();
+  toast(`${ok} foto diperbaiki lokasinya. Unggah ulang ke Drive bila sebelumnya sudah terkirim.`); cloudSoon(1500);
 });
 
 // ---------- Perbarui cap foto lama ke gaya yang dipilih ----------
@@ -1224,12 +1233,12 @@ async function restampOld(btn) {
       const res = await stamp(img, ph.t, gps, c.p, c.a, { ...c.opts, cover: !ph.orig });
       URL.revokeObjectURL(ph.url);
       photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: gps.lat, lng: gps.lng, acc: gps.acc, up: undefined,
-        synced: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
+        synced: false, gs: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
       persist(k); ok++;
     } catch (e) {}
   }
   restamping = false; render();
-  toast(`${ok} foto diperbarui ke cap terbaru. Unggah ulang ke Drive bila sebelumnya sudah terkirim.`); syncAll();
+  toast(`${ok} foto diperbarui ke cap terbaru. Unggah ulang ke Drive bila sebelumnya sudah terkirim.`); cloudSoon(1500);
 }
 $("oldBtn").addEventListener("click", e => restampOld(e.currentTarget));
 $("oldBtn2").addEventListener("click", e => restampOld(e.currentTarget));
@@ -1319,12 +1328,12 @@ $("rSave").addEventListener("click", () => {
   const old = photos.get(key);
   if (old) URL.revokeObjectURL(old.url);
   const prevPath = old ? (old.synced ? old.path : old.prevPath) || null : null;
-  photos.set(key, { ...rec, up: undefined, synced: false, path: null, prevPath, url });
+  photos.set(key, { ...rec, up: undefined, synced: false, gs: false, gid: old ? old.gid : undefined, path: null, prevPath, url });
   pending = null;
   $("review").hidden = true;
   persist(key); render();
   toast(`${labelOf(key)} tersimpan (${Math.round(rec.blob.size / 1024)} KB)`);
-  syncAll();
+  cloudSoon(1500);
 });
 $("rRetake").addEventListener("click", () => { const k = pending ? pending.key : target; closeReview(); openCamera(k); });
 $("rCancel").addEventListener("click", closeReview);
@@ -1361,7 +1370,7 @@ $("vDel").onclick = () => {
   if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "Yakin hapus?"; setTimeout(() => { delete b.dataset.armed; b.textContent = "Hapus"; }, 3000); return; }
   delete b.dataset.armed; b.textContent = "Hapus";
   const ph = photos.get(vKey); if (ph) URL.revokeObjectURL(ph.url);
-  photos.delete(vKey); dbPut(vKey, null); $("viewer").hidden = true; render(); toast("Foto dihapus.");
+  cloudForget(photos.get(vKey)); photos.delete(vKey); dbPut(vKey, null); $("viewer").hidden = true; render(); toast("Foto dihapus.");
 };
 
 /* ZIP: Foto Kondisi Awal - <Sekolah>/<Nama paket>/<tanggal jam - paket - sudut>.jpg */
@@ -1447,65 +1456,238 @@ $("shareAllBtn").onclick = () => {
 };
 
 // ---------- Sinkronisasi Supabase ----------
-/* Folder di bucket: "<NPSN> - <Nama Sekolah>/<Nama paket>/<tanggal jam - paket - sudut>.jpg" */
-const schoolFolder = () => clean(`${profil.npsn || "tanpa-npsn"} - ${profil.nama || "Sekolah"}`);
-let syncing = false;
+/* ---------- Sinkron antar-HP: akun Google + Google Drive ----------
+   Semua HP yang masuk dengan akun Google yang sama memakai satu folder Drive:
+     Kamera Revit SD - <Sekolah> (NPSN …)/
+       FOTO_REVITSD_<persen>/<Ruang>/…jpg
+       VIDEO_REVITSD_<persen>/<Ruang>/01 - <Ruang>.mp4        (video bercap, atau polos bila "polos saja")
+       VIDEO_REVITSD_<persen> (polos)/<Ruang>/01 - <Ruang>.mp4 (salinan polos dari mode dua versi)
+       Kegiatan/, Video lainnya/, _data-aplikasi.json (daftar ruang, tahap, profil)
+   Tiap file diberi appProperties (npsn, kind, k = kunci di aplikasi, dst.) agar HP lain bisa memetakannya kembali.
+   Catatan: dideklarasikan dengan function/var karena saveState() & persist() bisa terpanggil sebelum blok ini dijalankan. */
+var cloudBusy = false, cloudAgain = false, cloudTimer = null, cloudApplying = false, cloudMsg = "", cloudProg = "", cloudLast = 0, cloudForce = false;
+function cloudOn() { return !!(window.GD && GD.enabled && GD.known); }
+function cloudSoon(ms) { if (!cloudOn() || cloudApplying) return; clearTimeout(cloudTimer); cloudTimer = setTimeout(() => cloudSync(false), ms || 4000); }
+function cloudStateSoon() { cloudSoon(6000); }
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
+function stateHash() { return JSON.stringify({ paket, stages: STAGES, profil }); }
+const numOr = v => (v === undefined || v === "" || v === "null" ? null : +v);
+const sv = v => (v == null ? "" : String(v));
+function cloudPending() {
+  let n = 0;
+  for (const [k, ph] of photos) if (!ph.gs && (inPaket(k) || k.startsWith("#keg|"))) n++;
+  for (const [, v] of videos) if (!v.gs && (!v.room || paket.some(p => p.id === v.room))) n++;
+  try { n += JSON.parse(lsGet("kka-gtomb") || "[]").length; } catch (e) {}
+  return n;
+}
+function applyRemoteState(j) {
+  cloudApplying = true;
+  try {
+    if (Array.isArray(j.paket) && j.paket.length) paket = j.paket;
+    if (Array.isArray(j.stages) && j.stages.length) { STAGES = j.stages; saveStages(); }
+    if (j.profil) profil = { ...profil, ...j.profil };
+    saveState();
+    for (const [id, k] of Object.entries(fmap)) $(id).value = profil[k] || "";
+    $("pGaya").value = profil.gaya || "lengkap"; $("pPeta").value = profil.peta || "satelit";
+    if (window.KKAGeo && KKAGeo.setSource) KKAGeo.setSource(profil.peta || "satelit");
+    renderHeader();
+  } finally { cloudApplying = false; }
+}
 
-async function syncAll(manual) {
-  if (!window.SB || !SB.enabled || !SB.session || syncing) return;
-  if (!navigator.onLine) { if (manual) toast("Tidak ada internet. Foto akan dikirim otomatis saat online."); return; }
-  if (!profil.npsn || !profil.nama) { if (manual) toast("Isi nama sekolah dan NPSN dulu."); return; }
-  syncing = true; renderCloud();
-  let ok = 0, err = null;
-  for (const [k, ph] of photos) {
-    if (ph.synced) continue;
-    const q = parseKey(k); if (q.keg) continue;
-    const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak);
-    if (!p || !a) continue;
-    const path = `${schoolFolder()}/${q.st}%/${clean(p.nama)}/${fname(k)}`;
-    try {
-      await SB.upload(path, ph.blob);
-      await SB.upsertRow({
-        npsn: profil.npsn, nama_sekolah: profil.nama, wilayah: profil.wil || null,
-        paket: p.nama, sudut: q.st ? `${a.l} (${q.st}%)` : a.l, diambil_pada: new Date(ph.t).toISOString(),
-        lat: ph.lat ?? null, lng: ph.lng ?? null, akurasi_m: ph.acc ?? null,
-        storage_path: path, diperbarui: new Date().toISOString(),
-      });
-      if (ph.prevPath && ph.prevPath !== path) await SB.remove(ph.prevPath).catch(() => {});
-      if (photos.get(k) === ph) { ph.synced = true; ph.path = path; ph.prevPath = null; persist(k); }
-      ok++; render();
-    } catch (e) {
-      err = e.message;
-      if (/login|internet/i.test(err)) break;
+async function cloudSync(manual) {
+  if (!cloudOn()) return;
+  if (cloudBusy) { cloudAgain = true; return; }
+  if (!GD.valid) { cloudMsg = "Sesi Google berakhir — ketuk Masuk lagi."; renderCloud(); return; }
+  if (!navigator.onLine) { cloudMsg = "Tidak ada internet — dikirim otomatis saat online."; renderCloud(); if (manual) toast(cloudMsg); return; }
+  const npsn = (profil.npsn || "").trim();
+  if (!npsn || !profil.nama) { cloudMsg = "Isi nama sekolah dan NPSN dulu."; renderCloud(); if (manual) toast(cloudMsg); return; }
+  cloudBusy = true; cloudProg = "Memeriksa Drive…"; renderCloud();
+  let up = 0, down = 0, gone = 0;
+  try {
+    if (!GD.email) await GD.me();
+    // Ganti sekolah/NPSN: mulai folder baru, semua dikirim ulang
+    if (lsGet("kka-gnpsn") !== npsn) {
+      GD.forgetFolders();
+      for (const [k, ph] of photos) { ph.gs = false; ph.gid = undefined; persist(k); }
+      for (const [k, v] of videos) { v.gs = false; v.gid = v.gidP = undefined; persistVid(k); }
+      lsSet("kka-gstateh", null); lsSet("kka-gstatet", null); lsSet("kka-gtomb", null);
+      lsSet("kka-gnpsn", npsn);
     }
+    const rootName = `Kamera Revit SD - ${profil.nama} (NPSN ${npsn})`;
+    const F = path => GD.folder(npsn, path, rootName);
+    // ---- 0) Buang dulu file Drive dari foto/video yang dihapus di HP ini (agar tidak tertarik kembali)
+    let tomb = []; try { tomb = JSON.parse(lsGet("kka-gtomb") || "[]"); } catch (e) {}
+    while (tomb.length) { await GD.trash(tomb[0]); tomb.shift(); lsSet("kka-gtomb", JSON.stringify(tomb)); }
+    const remote = await GD.list({ kka: "file", npsn });
+
+    // ---- 1) Tarik daftar ruang/tahap/profil dari HP lain
+    const stF = remote.find(f => f.appProperties.kind === "state");
+    const sentH = lsGet("kka-gstateh");
+    if (stF && stF.modifiedTime !== lsGet("kka-gstatet") && (sentH == null || sentH === stateHash())) {
+      const j = JSON.parse(await (await GD.download(stF.id)).text());
+      applyRemoteState(j);
+      lsSet("kka-gstatet", stF.modifiedTime); lsSet("kka-gstateh", stateHash());
+    }
+
+    // ---- 2) Tarik foto/video baru dari HP lain
+    const byK = new Map();
+    for (const f of remote) {
+      const a = f.appProperties; if (a.kind === "state" || !a.k) continue;
+      const e = byK.get(a.k) || {}; e[a.var === "plain" ? "plain" : "main"] = f; byK.set(a.k, e);
+    }
+    for (const [k, e] of byK) {
+      const f = e.main; if (!f) continue; const a = f.appProperties;
+      if (a.kind === "photo") {
+        const loc = photos.get(k);
+        if (loc && loc.gid === f.id && (!loc.gs || loc.gmod === f.modifiedTime)) continue;
+        if (loc && !loc.gs) { // diubah di HP ini dan belum terkirim: perubahan lokal yang dipakai
+          if (!loc.gid && loc.t >= +a.t) { loc.gid = f.id; persist(k); continue; }
+          if (loc.gid) continue;
+        }
+        cloudProg = `Mengambil foto dari HP lain… ${down + 1}`; renderCloud();
+        const blob = await GD.download(f.id);
+        if (loc && loc.url) URL.revokeObjectURL(loc.url);
+        photos.set(k, { blob, t: +a.t || Date.now(), lat: numOr(a.lat), lng: numOr(a.lng), acc: numOr(a.acc), sv: a.sv || undefined, cap: a.cap || undefined,
+          gid: f.id, gmod: f.modifiedTime, gs: true, url: URL.createObjectURL(blob) });
+        persist(k); down++;
+      } else if (a.kind === "video") {
+        const loc = videos.get(k);
+        if (loc) { if (!loc.gs && !loc.gid) { loc.gid = f.id; loc.gidP = e.plain && e.plain.id; } continue; }
+        cloudProg = `Mengambil video dari HP lain… ${down + 1}`; renderCloud();
+        const blob = await GD.download(f.id);
+        const plain = e.plain ? await GD.download(e.plain.id) : undefined;
+        videos.set(k, { blob, plain, nostamp: a.ns === "1" || undefined, t: +a.t || Date.now(), dur: +a.dur || 0, title: a.title || "Video",
+          mime: blob.type, ext: a.ext || "mp4", room: a.room || undefined, st: a.st !== undefined && a.st !== "" ? +a.st : undefined,
+          gid: f.id, gidP: e.plain ? e.plain.id : undefined, gs: true });
+        persistVid(k); down++;
+      }
+    }
+
+    // ---- 3) Yang sudah dihapus di HP lain ikut dihapus di sini
+    const ids = new Set(remote.map(f => f.id));
+    if (remote.length) {
+      for (const [k, ph] of [...photos]) if (ph.gs && ph.gid && !ids.has(ph.gid)) { if (ph.url) URL.revokeObjectURL(ph.url); photos.delete(k); dbPut(k, null); gone++; }
+      for (const [k, v] of [...videos]) if (v.gs && v.gid && !ids.has(v.gid)) { if (v.url) URL.revokeObjectURL(v.url); videos.delete(k); dbPut(k, null); gone++; }
+    }
+
+    // ---- 5) Kirim foto baru/berubah
+    for (const [k, ph] of [...photos]) {
+      if (ph.gs || !(inPaket(k) || k.startsWith("#keg|"))) continue;
+      const q = parseKey(k);
+      const path = q.keg ? "Kegiatan" : `FOTO_REVITSD_${q.st}/${clean(paket.find(p => p.id === q.pid).nama)}`;
+      cloudProg = `Mengirim foto… ${up + 1}/${cloudPending()}`; renderCloud();
+      const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90) };
+      const meta = { name: fname(k), appProperties: props };
+      let r = null;
+      if (ph.gid) { try { r = await GD.put(ph.blob, meta, ph.gid); } catch (e) { if (e.status !== 404) throw e; } }
+      if (!r) r = await GD.put(ph.blob, { ...meta, parents: [await F(path)], mimeType: "image/jpeg" });
+      const cur = photos.get(k);
+      if (cur === ph) { ph.gid = r.id; ph.gmod = r.modifiedTime; ph.gs = true; persist(k); }
+      else if (cur && !cur.gid) { cur.gid = r.id; persist(k); } // diganti saat sedang dikirim: versi baru akan memperbarui file yang sama
+      up++;
+    }
+
+    // ---- 6) Kirim video baru (versi bercap dan polos)
+    for (const [k, v] of [...videos]) {
+      if (v.gs) continue;
+      let path, pathP, name, nameP;
+      if (v.room) {
+        const p = paket.find(x => x.id === v.room); if (!p) continue;
+        const idx = Math.max(0, roomClips(v.room, v.st).findIndex(([kk]) => kk === k));
+        path = `VIDEO_REVITSD_${v.st}/${clean(p.nama)}`; pathP = `VIDEO_REVITSD_${v.st} (polos)/${clean(p.nama)}`;
+        name = rvName(p, idx, v, "stamp"); nameP = name;
+      } else { path = "Video lainnya"; pathP = "Video lainnya/polos"; name = vidName(k); nameP = name.replace(/(\.\w+)$/, " - polos$1"); }
+      cloudProg = `Mengirim video… ${up + 1}/${cloudPending()}`; renderCloud();
+      const base = { kka: "file", npsn, kind: "video", k, t: sv(v.t), dur: sv(Math.round((v.dur || 0) * 10) / 10), title: sv(v.title).slice(0, 90),
+        ext: sv(v.ext), room: sv(v.room), st: sv(v.st), ns: v.nostamp ? "1" : "" };
+      if (!v.gid) v.gid = (await GD.put(v.blob, { name, parents: [await F(path)], appProperties: { ...base, var: "main" } })).id;
+      if (v.plain && !v.gidP) v.gidP = (await GD.put(v.plain, { name: nameP, parents: [await F(pathP)], appProperties: { ...base, var: "plain" } })).id;
+      if (videos.get(k) === v) { v.gs = true; persistVid(k); }
+      up++;
+    }
+
+    // ---- 7) Kirim daftar ruang/tahap/profil bila berubah
+    const h = stateHash();
+    if (!stF || h !== lsGet("kka-gstateh")) {
+      const blob = new Blob([JSON.stringify({ paket, stages: STAGES, profil, t: Date.now() })], { type: "application/json" });
+      const meta = { name: "_data-aplikasi.json", appProperties: { kka: "file", npsn, kind: "state", k: "state" } };
+      const r = stF ? await GD.put(blob, meta, stF.id) : await GD.put(blob, { ...meta, parents: [await F("")] });
+      lsSet("kka-gstateh", h); lsSet("kka-gstatet", r.modifiedTime);
+    }
+    cloudLast = Date.now();
+    cloudMsg = up || down || gone ? [up && `${up} terkirim`, down && `${down} baru dari HP lain`, gone && `${gone} dihapus`].filter(Boolean).join(" · ") : "Sudah sama dengan Drive";
+    if (down) toast(`${down} foto/video baru dari HP lain.`);
+    else if (manual) toast(cloudMsg + ".");
+  } catch (e) {
+    cloudMsg = e instanceof GD.AuthError ? "Sesi Google berakhir — ketuk Masuk lagi." : "Gagal sinkron: " + e.message;
+    if (manual) toast(cloudMsg);
+  } finally {
+    cloudBusy = false; cloudProg = ""; renderCloud(); render();
+    if (cloudAgain) { cloudAgain = false; cloudSoon(1500); }
   }
-  syncing = false; renderCloud(); render();
-  if (err) toast(err);
-  else if (ok) toast(`${ok} foto terkirim ke Supabase.`);
-  else if (manual) toast("Semua foto sudah terkirim.");
 }
 
 function renderCloud() {
-  if (!window.SB || !SB.enabled) return;
-  $("cloudPanel").hidden = false;
-  const s = SB.session;
-  $("loginForm").hidden = !!s; $("loggedIn").hidden = !s;
-  if (s) {
-    const antre = [...photos.values()].filter(ph => !ph.synced).length;
-    $("sbUser").textContent = `${s.email} · ${syncing ? "mengirim…" : antre ? antre + " foto antre" : "semua terkirim"}`;
-    $("sbSync").disabled = syncing;
-  }
+  if (!window.GD) return;
+  $("cloudOff").hidden = GD.enabled;
+  $("cloudLogin").hidden = !GD.enabled || GD.known;
+  $("cloudIn").hidden = !GD.enabled || !GD.known;
+  if (!GD.enabled || !GD.known) return;
+  const pend = cloudPending();
+  $("cloudUser").textContent = GD.email || "Akun Google";
+  $("cloudDot").className = "dot " + (!GD.valid ? "err" : cloudBusy ? "wait" : pend ? "wait" : "on");
+  $("cloudState").textContent = !GD.valid ? "Sesi berakhir — ketuk Masuk lagi untuk melanjutkan sinkron."
+    : cloudBusy ? cloudProg || "Menyinkronkan…"
+    : [pend ? `${pend} antre dikirim` : "Semua tersinkron", cloudMsg && cloudMsg !== "Sudah sama dengan Drive" ? cloudMsg : "",
+      cloudLast ? "terakhir " + jam(cloudLast) : ""].filter(Boolean).join(" · ");
+  $("cloudRelogin").hidden = GD.valid;
+  $("cloudSyncBtn").hidden = !GD.valid; $("cloudSyncBtn").disabled = cloudBusy;
+  // pilihan folder untuk tautan portal
+  const sel = $("cloudFolder"), prev = sel.value;
+  sel.innerHTML = STAGES.flatMap(st => [`FOTO_REVITSD_${st}`, `VIDEO_REVITSD_${st}`, `VIDEO_REVITSD_${st} (polos)`])
+    .concat(["Kegiatan"]).map(x => `<option>${esc(x)}</option>`).join("");
+  if (prev) sel.value = prev;
 }
-$("loginForm").addEventListener("submit", async e => {
-  e.preventDefault();
-  $("sbLogin").disabled = true;
-  try { await SB.login($("sbEmail").value.trim(), $("sbPass").value); $("sbPass").value = ""; toast("Berhasil masuk."); renderCloud(); syncAll(); }
-  catch (err) { toast(navigator.onLine ? err.message : "Butuh internet untuk login pertama kali."); }
-  $("sbLogin").disabled = false;
+function cloudLoginGo() {
+  if (pending || !$("review").hidden) { toast("Simpan atau batalkan foto yang sedang ditinjau dulu."); return; }
+  GD.login(cloudForce);
+}
+$("cloudLoginBtn").addEventListener("click", () => { cloudForce = true; cloudLoginGo(); });
+$("cloudRelogin").addEventListener("click", cloudLoginGo);
+$("cloudSyncBtn").addEventListener("click", () => cloudSync(true));
+$("cloudOut").addEventListener("click", e => {
+  const b = e.currentTarget;
+  if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "Yakin keluar?"; setTimeout(() => { delete b.dataset.armed; b.textContent = "Keluar"; }, 3000); return; }
+  GD.logout(); lsSet("kka-gnpsn", null); cloudMsg = ""; renderCloud(); render();
+  toast("Sudah keluar dari Google. Foto di HP ini tetap ada.");
 });
-$("sbSync").addEventListener("click", () => syncAll(true));
-$("sbOut").addEventListener("click", async () => { await SB.logout(); renderCloud(); toast("Sudah keluar."); });
-window.addEventListener("online", () => syncAll());
+$("cloudLinkBtn").addEventListener("click", async () => {
+  const npsn = (profil.npsn || "").trim(); if (!npsn || !profil.nama) return toast("Isi nama sekolah dan NPSN dulu.");
+  if (!GD.valid) return toast("Masuk Google lagi dulu.");
+  const b = $("cloudLinkBtn"); b.disabled = true;
+  try {
+    const id = await GD.folder(npsn, $("cloudFolder").value, `Kamera Revit SD - ${profil.nama} (NPSN ${npsn})`);
+    const url = await GD.makePublic(id);
+    $("cloudLink").value = url; $("cloudLinkRow").hidden = false; $("cloudOpen").href = url;
+    try { await navigator.clipboard.writeText(url); toast("Link folder disalin (siapa saja yang memiliki link dapat melihat)."); }
+    catch (e) { $("cloudLink").select(); toast("Link siap — salin dari kotak di bawah tombol."); }
+  } catch (e) { toast("Gagal membuat link: " + e.message); }
+  b.disabled = false;
+});
+$("cloudLink").addEventListener("focus", e => e.target.select());
+
+// Pemicu sinkron: saat dibuka, kembali online, aplikasi tampil lagi, dan berkala tiap 2 menit
+(function cloudBoot() {
+  if (!window.GD || !GD.enabled) { renderCloud(); return; }
+  if (GD.loginError) { cloudForce = true; toast(GD.loginError === "access_denied" ? "Masuk Google dibatalkan." : "Perlu memilih akun Google lagi — ketuk Masuk."); }
+  if (GD.justLoggedIn) { goScreen("atur"); toast("Berhasil masuk Google. Menyinkronkan…"); setTimeout(() => $("cloudPanel").scrollIntoView({ block: "center" }), 300); }
+  renderCloud();
+  if (cloudOn() && GD.valid) setTimeout(() => cloudSync(false), GD.justLoggedIn ? 300 : 1500);
+  window.addEventListener("online", () => cloudSoon(1000));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - cloudLast > 60000) cloudSoon(800); renderCloud(); });
+  setInterval(() => { if (document.visibilityState === "visible" && cloudOn() && GD.valid) cloudSync(false); else renderCloud(); }, 120000);
+})();
 
 // ---------- Pasang sebagai aplikasi (PWA) ----------
 let deferredPrompt = null;
@@ -1538,5 +1720,5 @@ openDb().then(async d => {
   const used = [...photos.keys()].map(parseKey).filter(q => !q.keg).map(q => q.st);
   const merged = [...new Set([...STAGES, ...used])].sort((a, b) => a - b);
   if (merged.length !== STAGES.length) { STAGES = merged; saveStages(); }
-  renderStageEd(); render(); renderCloud(); syncAll();
+  renderStageEd(); render(); renderCloud(); cloudSoon(1500);
 });
