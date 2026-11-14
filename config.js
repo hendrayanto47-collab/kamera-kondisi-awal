@@ -7,7 +7,7 @@
 window.APP_CONFIG = {
   /* Client ID Google (OAuth, jenis "Web application") untuk sinkron antar-HP lewat Google Drive.
      Berakhiran .apps.googleusercontent.com. Bukan rahasia; JANGAN taruh Client secret di sini. */
-  GOOGLE_CLIENT_ID: "",
+  GOOGLE_CLIENT_ID: "304430930321-2hkevoe23ro98iobbf1t92errusf6eei.apps.googleusercontent.com",
   SUPABASE_URL: "https://xxxxxxxx.supabase.co",
   SUPABASE_ANON_KEY: "ISI_ANON_KEY_DI_SINI",
   BUCKET: "foto-kondisi-awal",
