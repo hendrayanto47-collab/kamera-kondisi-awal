@@ -88,12 +88,21 @@
   function drawFrame() {
     const v = $("vrVideo"), x = rec.ctx; if (!v.videoWidth) return;
     const s = S(), p = s ? s.pose() : null, turn = s ? s.frameRotation(p) : 0;
-    // Horizon lurus otomatis: koreksi miring kecil (maks ±12°), diperhalus
-    const want = p && Math.abs(p.level) < 12 ? -p.level : 0;
-    rec.level = rec.level * 0.85 + want * 0.15;
+    // Horizon lurus otomatis (maks ±10°). Sensor gravitasi ikut terguncang getaran tangan, jadi:
+    // - diperhalus berbasis waktu (pratinjau ±0,6 dtk; saat merekam ±3 dtk) dan ada zona mati,
+    // - tidak diubah selama HP sedang digerakkan/digeser cepat (giroskop tinggi),
+    // sehingga gambar tidak ikut bergoyang-putar. Bisa dimatikan di Pengaturan.
+    const now = performance.now(), dt = Math.min(0.1, (now - (rec.lt || now)) / 1000); rec.lt = now;
+    const hl = rec.opts.horizon !== false;
+    const want = hl && p && Math.abs(p.level) < 10 ? -p.level : 0;
+    const moving = s && s.shake && s.shake() > 20;
+    const tau = rec.recording ? 3 : 0.6, dead = rec.recording ? 1.5 : 0.3;
+    const diff = want - rec.level;
+    if (!hl) rec.level = 0;
+    else if (!moving && Math.abs(diff) > dead) rec.level += diff * (1 - Math.exp(-dt / tau));
     const vw = v.videoWidth, vh = v.videoHeight, sw = turn % 180 !== 0;
     const fw = sw ? vh : vw, fh = sw ? vw : vh;           // ukuran bingkai setelah diputar
-    const zoom = 1.12;                                     // potong tepi agar sudut kosong tidak terlihat saat diluruskan
+    const zoom = hl ? 1.12 : 1;                            // potong tepi agar sudut kosong tidak terlihat saat diluruskan
     const sc = Math.max(W / fw, H / fh) * zoom;
     x.fillStyle = "#000"; x.fillRect(0, 0, W, H);
     x.save(); x.translate(W / 2, H / 2);
@@ -356,5 +365,5 @@
   }
   $("mkCancel").addEventListener("click", () => { if (mk) mk.cancel = true; });
 
-  window.KKAVid = { supported, openRecorder, makeReport, pickMime };
+  window.KKAVid = { _level: () => rec && rec.level, supported, openRecorder, makeReport, pickMime };
 })();

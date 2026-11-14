@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.5.0 · 14 Nov 2026";
+const APP_VERSION = "2.5.1 · 14 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -750,6 +750,11 @@ let vidAudio = true;
 try { vidAudio = localStorage.getItem("kka-vaudio") !== "0"; } catch (e) {}
 $("vidAudio").checked = vidAudio;
 /* Stamp di video: "both" = satu rekaman menghasilkan dua file (bercap + polos), "stamp", atau "plain" */
+let vidHorizon = true;
+try { vidHorizon = localStorage.getItem("kka-hlock") !== "0"; } catch (e) {}
+$("pHLock").checked = vidHorizon;
+$("pHLock").addEventListener("change", e => { vidHorizon = e.target.checked; try { localStorage.setItem("kka-hlock", vidHorizon ? "1" : "0"); } catch (er) {}
+  toast(vidHorizon ? "Horizon video diluruskan otomatis (halus)." : "Horizon video tidak diluruskan: gambar persis seperti kamera."); });
 let vidStamp = "both";
 try { vidStamp = localStorage.getItem("kka-vstamp") || "both"; } catch (e) {}
 $("pVStamp").value = vidStamp;
@@ -853,7 +858,7 @@ function recordRoom(p, st) {
   KKAVid.openRecorder({
     title: `${p.nama} · ${stageName(st)}`, titleFn: () => `${p.nama} · ${clipNo()}${clipNo() <= RV_MIN ? "/" + RV_MIN : ""} ${shot().t}`,
     shotFn: shot,
-    multi: true, minSec: RV_MIN_SEC, maxSec: RV_MAX_SEC, stampMode: vidStamp,
+    multi: true, minSec: RV_MIN_SEC, maxSec: RV_MAX_SEC, stampMode: vidStamp, horizon: vidHorizon,
     audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO PER RUANGAN",
     address: vidAddress,
     onSaved: v => {
@@ -967,7 +972,7 @@ $("vidRec").addEventListener("click", () => {
   if (!profil.nama) { toast("Isi nama sekolah dan NPSN dulu."); return; }
   refreshGps();
   KKAVid.openRecorder({
-    title, stampMode: vidStamp, audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
+    title, stampMode: vidStamp, horizon: vidHorizon, audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
     address: vidAddress,
     onSaved: v => saveVideo({ ...v, title }),
     onError: m => toast(m),
