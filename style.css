@@ -145,8 +145,9 @@ html.vf-open, html.vf-open body{overflow:hidden}
 .vf[data-state="go"] .vf-hint{border-left-color:var(--go)}
 .vf[data-state="wait"] .vf-hint{border-left-color:#bbb}
 /* Saat HP dimiringkan, kotak arahan ikut berputar agar terbaca */
-.vf-hint[data-turn="90"]{left:auto;right:calc(8px + env(safe-area-inset-right,0px));top:50%;width:min(80vh,520px);transform:translate(calc(50% - 50px),-50%) rotate(90deg)}
-.vf-hint[data-turn="270"]{left:calc(8px + env(safe-area-inset-left,0px));top:50%;width:min(80vh,520px);transform:translate(calc(-50% + 50px),-50%) rotate(-90deg)}
+/* Saat HP mendatar, kotak arahan diputar dan ditambatkan ke tepi layar (tidak terpotong walau isinya tinggi) */
+.vf-hint[data-turn="90"]{left:auto;right:calc(8px + env(safe-area-inset-right,0px));top:50%;width:min(80vh,520px);transform-origin:top right;transform:rotate(90deg) translateX(50%)}
+.vf-hint[data-turn="270"]{left:calc(8px + env(safe-area-inset-left,0px));top:50%;width:min(80vh,520px);transform-origin:top left;transform:rotate(-90deg) translateX(-50%)}
 .vf-hint[data-turn="180"]{top:auto;bottom:calc(120px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) rotate(180deg)}
 .vf-hint b{font-family:var(--f-display);font-size:15px;letter-spacing:.02em}
 .vf-sub{font-size:12px;color:#d6dbd8}
@@ -350,3 +351,10 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;justify-self:start}
 .seg button{font:600 13px var(--f-sans, inherit);border:0;background:var(--surface);color:var(--ink);padding:6px 12px;cursor:pointer}
 .seg button.on{background:var(--accent);color:var(--accent-ink)}
+.vr-shot{display:flex;gap:10px;align-items:center;text-align:left;margin-top:8px;font-size:13px;line-height:1.35;font-weight:500}
+.vr-fig{flex:0 0 76px;width:76px;background:#f4f2ec;border-radius:6px;padding:3px;display:block}
+.vr-fig svg{width:100%;height:auto;display:block}
+.vr-fig .g-bld{fill:#d6d3cb;stroke:#222}.vr-fig .g-lbl{fill:#222}.vr-fig .g-you{fill:#222}
+.rvshots{display:flex;gap:6px;flex-wrap:wrap}
+.rvshots span{font-size:12px;border:1px dashed var(--line);border-radius:99px;padding:2px 8px;color:var(--muted)}
+.rvshots span.on{border-style:solid;border-color:var(--ok);color:var(--ok);font-weight:700}

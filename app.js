@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.3.1 · 14 Nov 2026";
+const APP_VERSION = "2.4.0 · 14 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -89,7 +89,7 @@ const photos = new Map();
 const videos = new Map();
 function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
-  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
+  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
 const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs"];
 function persist(k) {
@@ -770,12 +770,37 @@ function saveVideo(v, msg) {
    Folder utama Google Drive "VIDEO_REVITSD_<persen>" berisi subfolder per nama ruangan;
    tiap subfolder minimal 4 file rekaman video ASLI (tanpa edit) berdurasi 5–10 detik. */
 const RV_MIN = 4, RV_MIN_SEC = 5, RV_MAX_SEC = 10;
+/* Urutan sudut wajib per ruangan (4 video). Ruang "Lingkungan" memakai urutan sendiri. */
+const RV_SHOTS = {
+  ruang: [
+    { id: "depan", s: "Depan", t: "Tampak depan", fig: "depan", d: "Berdiri 5–10 m di depan ruang, seluruh bangunan masuk bingkai. Tahan diam 2 detik, lalu geser pelan dari kiri ke kanan." },
+    { id: "serong", s: "Serong", t: "Tampak serong/samping", fig: "serongkanan", d: "Pindah ke sudut bangunan (serong 45°). Rekam sisi samping dan atap, geser pelan." },
+    { id: "dalam", s: "Dalam", t: "Dalam ruangan", fig: "ruang", d: "Berdiri di ambang pintu. Rekam seluruh isi ruang: dinding, lantai, plafon, jendela. Geser pelan." },
+    { id: "detail", s: "Detail", t: "Detail pekerjaan", fig: "samping", d: "Dekati bagian yang rusak atau sedang dikerjakan: atap, plafon, dinding, lantai, pintu/jendela. Tahan stabil." },
+  ],
+  lingkungan: [
+    { id: "akses", s: "Akses", t: "Gerbang/akses masuk", fig: "depan", d: "Berdiri di gerbang atau jalan masuk sekolah. Rekam ke arah area pekerjaan, geser pelan." },
+    { id: "halaman", s: "Halaman", t: "Halaman menyeluruh", fig: "serongkanan", d: "Dari titik yang tinggi/lapang, rekam seluruh halaman. Geser pelan kiri ke kanan." },
+    { id: "titik", s: "Titik kerja", t: "Titik pekerjaan utama", fig: "samping", d: "Rekam lokasi pekerjaan utama (pagar, saluran, jalan, lapangan) dari jarak sedang." },
+    { id: "detail", s: "Detail", t: "Detail pekerjaan", fig: "samping", d: "Dekati detail kondisi/hasil pekerjaan. Tahan stabil." },
+  ],
+};
+const shotsFor = p => (/lingkungan/i.test(p.grup + " " + p.nama) ? RV_SHOTS.lingkungan : RV_SHOTS.ruang);
+const shotOf = (p, v) => shotsFor(p).find(x => x.id === v.shot);
+function nextShot(p, st) {
+  const done = new Set(roomClips(p.id, st).map(([, v]) => v.shot));
+  return shotsFor(p).find(x => !done.has(x.id)) || null;
+}
 let rvStage = null;
 try { const x = localStorage.getItem("kka-rvstage"); if (x != null) rvStage = +x; } catch (e) {}
 const rvSt = () => (rvStage != null && STAGES.includes(rvStage) ? rvStage : view);
-const roomClips = (pid, st) => [...videos.entries()].filter(([, v]) => v.room === pid && v.st === st).sort((a, b) => a[1].t - b[1].t);
+const SHOT_ORDER = ["depan", "akses", "serong", "halaman", "dalam", "titik", "detail"];
+const shotRank = v => { const i = SHOT_ORDER.indexOf(v.shot); return i < 0 ? 99 : i; };
+const roomClips = (pid, st) => [...videos.entries()].filter(([, v]) => v.room === pid && v.st === st)
+  .sort((a, b) => shotRank(a[1]) - shotRank(b[1]) || a[1].t - b[1].t);
 const rvFolder = st => `VIDEO_REVITSD_${st}`;
-const rvName = (p, i, v, ver) => `${two(i + 1)} - ${clean(p.nama)}${ver === "polos" && v.plain ? " - polos" : ""}.${v.ext || "mp4"}`;
+const rvName = (p, i, v, ver) => { const sh = shotOf(p, v);
+  return `${two(i + 1)} - ${clean(p.nama)}${sh ? " - " + clean(sh.t) : ""}${ver === "polos" && v.plain ? " - polos" : ""}.${v.ext || "mp4"}`; };
 function renderRoomVid() {
   const st = rvSt();
   $("rvStage").innerHTML = STAGES.map(x => `<option value="${x}">${esc(stageName(x))}</option>`).join("");
@@ -788,7 +813,9 @@ function renderRoomVid() {
     const hasP = clips.some(([, v]) => v.plain || v.nostamp), hasS = clips.some(([, v]) => !v.nostamp);
     return `<div class="rvroom${ok ? " ok" : ""}">
       <div class="rvhead"><b>${esc(p.nama)}</b><span class="rvcount">${n}/${RV_MIN} video</span>${allUp ? '<small class="okc">✓ Drive</small>' : ""}</div>
-      ${n ? `<div class="rvclips">${clips.map(([k, v], i) => `<button type="button" class="rvclip" data-rvplay="${esc(k)}" aria-label="Putar video ${i + 1}">${two(i + 1)}<small>${Math.round(v.dur || 0)} dtk${v.plain ? " · 2v" : v.nostamp ? " · polos" : ""}</small></button>`).join("")}</div>` : ""}
+      <div class="rvshots">${shotsFor(p).map((x, i) => { const has = clips.some(([, v]) => v.shot === x.id);
+        return `<span class="${has ? "on" : ""}">${has ? "✓" : i + 1} ${esc(x.s)}</span>`; }).join("")}</div>
+      ${n ? `<div class="rvclips">${clips.map(([k, v], i) => `<button type="button" class="rvclip" data-rvplay="${esc(k)}" aria-label="Putar video ${i + 1}">${two(i + 1)}${shotOf(p, v) ? " " + esc(shotOf(p, v).s) : ""}<small>${Math.round(v.dur || 0)} dtk${v.plain ? " · 2v" : v.nostamp ? " · polos" : ""}</small></button>`).join("")}</div>` : ""}
       <div class="acts"><button class="btn${ok ? "" : " primary"}" type="button" data-rvrec="${esc(p.id)}">${n ? "Rekam lagi" : "Rekam 4 video"}</button>
       ${hasP && hasS ? `<button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="stamp">Unggah (stamp)</button><button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="polos">Unggah (polos)</button>`
         : `<button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="${hasP ? "polos" : "stamp"}" ${n ? "" : "disabled"}>Unggah ke Drive</button>`}</div></div>`;
@@ -800,15 +827,18 @@ function recordRoom(p, st) {
   if (!profil.nama) { toast("Isi nama sekolah dan NPSN dulu."); return; }
   refreshGps();
   const clipNo = () => roomClips(p.id, st).length + 1;
+  const extra = { s: "Tambahan", t: "Video tambahan", fig: "ruang", d: "4 sudut wajib sudah lengkap. Rekam bagian lain yang perlu ditunjukkan, atau tutup kamera (✕)." };
+  const shot = () => nextShot(p, st) || extra;
   KKAVid.openRecorder({
-    title: `${p.nama} · ${stageName(st)}`, titleFn: () => `${p.nama} · video ${clipNo()}${clipNo() <= RV_MIN ? "/" + RV_MIN : ""}`,
+    title: `${p.nama} · ${stageName(st)}`, titleFn: () => `${p.nama} · ${clipNo()}${clipNo() <= RV_MIN ? "/" + RV_MIN : ""} ${shot().t}`,
+    shotFn: shot,
     multi: true, minSec: RV_MIN_SEC, maxSec: RV_MAX_SEC, stampMode: vidStamp,
     audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO PER RUANGAN",
     address: vidAddress,
     onSaved: v => {
-      const n = clipNo();
-      saveVideo({ ...v, title: `${p.nama} · video ${n} · ${stageName(st)}`, room: p.id, st },
-        n >= RV_MIN ? `Video ${n} tersimpan. ${p.nama} sudah ${n} video — boleh tutup kamera (✕).` : `Video ${n}/${RV_MIN} tersimpan. Pindah sudut, lalu rekam video berikutnya.`);
+      const n = clipNo(), sh = shot();
+      saveVideo({ ...v, title: `${p.nama} · ${sh.t} · ${stageName(st)}`, room: p.id, st, shot: sh === extra ? undefined : sh.id },
+        n >= RV_MIN ? `Video ${n} tersimpan. ${p.nama} sudah ${n} video — boleh tutup kamera (✕).` : `Video ${n}/${RV_MIN} tersimpan. Berikutnya: ${(shotsFor(p).find(x => x.id !== sh.id && !roomClips(p.id, st).some(([, c]) => c.shot === x.id)) || extra).t}.`);
     },
     onError: m => toast(m),
     onUnsupported: () => toast("Perekam di aplikasi tidak didukung HP ini."),
@@ -1503,6 +1533,7 @@ async function cloudSync(manual) {
   const npsn = (profil.npsn || "").trim();
   if (!npsn || !profil.nama) { cloudMsg = "Isi nama sekolah dan NPSN dulu."; renderCloud(); if (manual) toast(cloudMsg); return; }
   cloudBusy = true; cloudProg = "Memeriksa Drive…"; renderCloud();
+  let wake = null; try { if (navigator.wakeLock) wake = await navigator.wakeLock.request("screen"); } catch (e) {}
   let up = 0, down = 0, gone = 0;
   try {
     if (!GD.email) await GD.me();
@@ -1536,14 +1567,14 @@ async function cloudSync(manual) {
       const a = f.appProperties; if (a.kind === "state" || !a.k) continue;
       const e = byK.get(a.k) || {}; e[a.var === "plain" ? "plain" : "main"] = f; byK.set(a.k, e);
     }
-    for (const [k, e] of byK) {
-      const f = e.main; if (!f) continue; const a = f.appProperties;
+    const pullOne = async (k, e) => {
+      const f = e.main; if (!f) return; const a = f.appProperties;
       if (a.kind === "photo") {
         const loc = photos.get(k);
-        if (loc && loc.gid === f.id && (!loc.gs || loc.gmod === f.modifiedTime)) continue;
+        if (loc && loc.gid === f.id && (!loc.gs || loc.gmod === f.modifiedTime)) return;
         if (loc && !loc.gs) { // diubah di HP ini dan belum terkirim: perubahan lokal yang dipakai
-          if (!loc.gid && loc.t >= +a.t) { loc.gid = f.id; persist(k); continue; }
-          if (loc.gid) continue;
+          if (!loc.gid && loc.t >= +a.t) { loc.gid = f.id; persist(k); return; }
+          if (loc.gid) return;
         }
         cloudProg = `Mengambil foto dari HP lain… ${down + 1}`; renderCloud();
         const blob = await GD.download(f.id);
@@ -1553,16 +1584,18 @@ async function cloudSync(manual) {
         persist(k); down++;
       } else if (a.kind === "video") {
         const loc = videos.get(k);
-        if (loc) { if (!loc.gs && !loc.gid) { loc.gid = f.id; loc.gidP = e.plain && e.plain.id; } continue; }
+        if (loc) { if (!loc.gs && !loc.gid) { loc.gid = f.id; loc.gidP = e.plain && e.plain.id; } return; }
         cloudProg = `Mengambil video dari HP lain… ${down + 1}`; renderCloud();
         const blob = await GD.download(f.id);
         const plain = e.plain ? await GD.download(e.plain.id) : undefined;
         videos.set(k, { blob, plain, nostamp: a.ns === "1" || undefined, t: +a.t || Date.now(), dur: +a.dur || 0, title: a.title || "Video",
-          mime: blob.type, ext: a.ext || "mp4", room: a.room || undefined, st: a.st !== undefined && a.st !== "" ? +a.st : undefined,
+          mime: blob.type, ext: a.ext || "mp4", room: a.room || undefined, shot: a.shot || undefined, st: a.st !== undefined && a.st !== "" ? +a.st : undefined,
           gid: f.id, gidP: e.plain ? e.plain.id : undefined, gs: true });
         persistVid(k); down++;
       }
-    }
+    };
+    const pulls = [...byK];
+    await Promise.all([0, 1, 2].map(async () => { while (pulls.length) { const [k, e] = pulls.shift(); await pullOne(k, e); } }));
 
     // ---- 3) Yang sudah dihapus di HP lain ikut dihapus di sini
     const ids = new Set(remote.map(f => f.id));
@@ -1571,12 +1604,23 @@ async function cloudSync(manual) {
       for (const [k, v] of [...videos]) if (v.gs && v.gid && !ids.has(v.gid)) { if (v.url) URL.revokeObjectURL(v.url); videos.delete(k); dbPut(k, null); gone++; }
     }
 
-    // ---- 5) Kirim foto baru/berubah
+    // ---- 5+6) Kirim foto & video baru — 3 sekaligus agar cepat; video ruangan didahulukan agar tidak menunggu semua foto
+    const jobs = [];
+    for (const [k, v] of [...videos]) {
+      if (v.gs) continue;
+      if (v.room && !paket.some(x => x.id === v.room)) continue;
+      jobs.push({ rank: v.room ? 0 : 2, run: () => upVideo(k, v) });
+    }
     for (const [k, ph] of [...photos]) {
       if (ph.gs || !(inPaket(k) || k.startsWith("#keg|"))) continue;
+      jobs.push({ rank: 1, run: () => upPhoto(k, ph) });
+    }
+    jobs.sort((x, y) => x.rank - y.rank);
+    const total = jobs.length;
+    const tick = () => { cloudProg = `Mengirim ke Drive… ${up}/${total}`; renderCloud(); };
+    async function upPhoto(k, ph) {
       const q = parseKey(k);
       const path = q.keg ? "Kegiatan" : `FOTO_REVITSD_${q.st}/${clean(paket.find(p => p.id === q.pid).nama)}`;
-      cloudProg = `Mengirim foto… ${up + 1}/${cloudPending()}`; renderCloud();
       const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90) };
       const meta = { name: fname(k), appProperties: props };
       let r = null;
@@ -1585,27 +1629,32 @@ async function cloudSync(manual) {
       const cur = photos.get(k);
       if (cur === ph) { ph.gid = r.id; ph.gmod = r.modifiedTime; ph.gs = true; persist(k); }
       else if (cur && !cur.gid) { cur.gid = r.id; persist(k); } // diganti saat sedang dikirim: versi baru akan memperbarui file yang sama
-      up++;
     }
-
-    // ---- 6) Kirim video baru (versi bercap dan polos)
-    for (const [k, v] of [...videos]) {
-      if (v.gs) continue;
+    async function upVideo(k, v) {
       let path, pathP, name, nameP;
       if (v.room) {
-        const p = paket.find(x => x.id === v.room); if (!p) continue;
+        const p = paket.find(x => x.id === v.room);
         const idx = Math.max(0, roomClips(v.room, v.st).findIndex(([kk]) => kk === k));
         path = `VIDEO_REVITSD_${v.st}/${clean(p.nama)}`; pathP = `VIDEO_REVITSD_${v.st} (polos)/${clean(p.nama)}`;
         name = rvName(p, idx, v, "stamp"); nameP = name;
       } else { path = "Video lainnya"; pathP = "Video lainnya/polos"; name = vidName(k); nameP = name.replace(/(\.\w+)$/, " - polos$1"); }
-      cloudProg = `Mengirim video… ${up + 1}/${cloudPending()}`; renderCloud();
       const base = { kka: "file", npsn, kind: "video", k, t: sv(v.t), dur: sv(Math.round((v.dur || 0) * 10) / 10), title: sv(v.title).slice(0, 90),
-        ext: sv(v.ext), room: sv(v.room), st: sv(v.st), ns: v.nostamp ? "1" : "" };
-      if (!v.gid) v.gid = (await GD.put(v.blob, { name, parents: [await F(path)], appProperties: { ...base, var: "main" } })).id;
-      if (v.plain && !v.gidP) v.gidP = (await GD.put(v.plain, { name: nameP, parents: [await F(pathP)], appProperties: { ...base, var: "plain" } })).id;
+        ext: sv(v.ext), room: sv(v.room), st: sv(v.st), ns: v.nostamp ? "1" : "", shot: sv(v.shot) };
+      if (!v.gid) { v.gid = (await GD.put(v.blob, { name, parents: [await F(path)], appProperties: { ...base, var: "main" } })).id; persistVid(k); }
+      if (v.plain && !v.gidP) { v.gidP = (await GD.put(v.plain, { name: nameP, parents: [await F(pathP)], appProperties: { ...base, var: "plain" } })).id; persistVid(k); }
       if (videos.get(k) === v) { v.gs = true; persistVid(k); }
-      up++;
     }
+    tick();
+    let firstErr = null;
+    const worker = async () => {
+      while (jobs.length && !firstErr) {
+        const j = jobs.shift();
+        try { await j.run(); up++; tick(); }
+        catch (e) { if (e instanceof GD.AuthError) firstErr = e; else firstErr = firstErr || e; }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    if (firstErr) throw firstErr;
 
     // ---- 7) Kirim daftar ruang/tahap/profil bila berubah
     const h = stateHash();
@@ -1624,6 +1673,7 @@ async function cloudSync(manual) {
     if (manual) toast(cloudMsg);
   } finally {
     cloudBusy = false; cloudProg = ""; renderCloud(); render();
+    if (wake) wake.release().catch(() => {});
     if (cloudAgain) { cloudAgain = false; cloudSoon(1500); }
   }
 }

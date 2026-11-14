@@ -58,6 +58,7 @@
     const sensorP = S() ? S().start() : Promise.resolve();
     $("vr").hidden = false; document.documentElement.classList.add("vf-open");
     $("vrTitle").textContent = (o.titleFn ? o.titleFn() : o.title).toUpperCase();
+    showShot(o);
     setMsg("wait", "Membuka kamera…"); setRecUI(false);
     let stream;
     const video = { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } };
@@ -137,6 +138,14 @@
     if (rec) rec.busyOverlay = false;
   }
 
+  // Arahan sudut pengambilan (video per ruangan): gambar denah kecil + kalimat petunjuk
+  function showShot(o) {
+    const sh = o.shotFn ? o.shotFn() : null;
+    $("vrShot").hidden = !sh;
+    if (!sh) return;
+    $("vrFig").innerHTML = (window.KKA && KKA.PLAN[sh.fig]) || "";
+    $("vrShotD").textContent = sh.d;
+  }
   function setMsg(state, msg) { $("vrMsg").textContent = msg; $("vr").dataset.state = state; }
   function guide() {
     if (!rec || !rec.ctx) return;
@@ -157,7 +166,7 @@
     else {
       const min = rec.opts.minSec || 0, el = rec.recording ? (Date.now() - rec.t0) / 1000 : 0;
       m = !rec.recording ? "Siap merekam. Ketuk tombol merah."
-        : min && el < min ? `Terus rekam — minimal ${min} detik.` : rec.opts.maxSec ? "Bagus. Berhenti sendiri di " + rec.opts.maxSec + " detik." : "Bagus — terus berjalan pelan.";
+        : rec.opts.shotFn && el < 2 ? "Tahan diam sebentar…" : min && el < min ? `Geser pelan — minimal ${min} detik.` : rec.opts.maxSec ? "Bagus. Berhenti sendiri di " + rec.opts.maxSec + " detik." : "Bagus — terus berjalan pelan.";
     }
     setMsg(st, m);
     if (rec.recording) {
@@ -201,6 +210,7 @@
       if (o.multi) { // klip pendek berturut-turut: kamera tetap terbuka untuk klip berikutnya
         o.onSaved(v);
         if (o.titleFn) $("vrTitle").textContent = o.titleFn().toUpperCase();
+        showShot(o);
         return;
       }
       closeRecorder(); o.onSaved(v);

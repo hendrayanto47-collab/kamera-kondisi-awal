@@ -87,8 +87,13 @@
   let fold = {};
   try { fold = JSON.parse(localStorage.getItem(FOLD_KEY) || "{}"); } catch (e) {}
   const saveFold = () => { try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) {} };
-  async function folder(npsn, path, rootName) {
-    const ck = npsn + ":" + path; if (fold[ck]) return fold[ck];
+  const inflight = {}; // cegah folder ganda saat beberapa unggahan berjalan bersamaan
+  function folder(npsn, path, rootName) {
+    const ck = npsn + ":" + path; if (fold[ck]) return Promise.resolve(fold[ck]);
+    if (!inflight[ck]) inflight[ck] = folderMake(npsn, path, rootName, ck).finally(() => delete inflight[ck]);
+    return inflight[ck];
+  }
+  async function folderMake(npsn, path, rootName, ck) {
     const parts = path ? path.split("/") : [];
     const parentPath = parts.slice(0, -1).join("/");
     const parent = path ? await folder(npsn, parentPath, rootName) : null;

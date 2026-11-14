@@ -84,7 +84,7 @@
       <p class="rvpath">Drive: <b id="rvFolder">VIDEO_REVITSD_0</b> › <i>nama ruangan</i> › 01.mp4, 02.mp4 …</p>
       <p class="hint" id="rvSum"></p>
       <div class="rvlist" id="rvList"></div>
-      <p class="hint">Rekam tiap video dari sudut berbeda (depan, samping, dalam, detail pekerjaan). Rekaman berhenti sendiri di 10 detik; tombol berhenti aktif setelah 5 detik. Kamera tetap terbuka untuk video berikutnya, tutup dengan ✕ bila sudah cukup.</p>
+      <p class="hint">Kamera memandu urutan sudut untuk tiap ruangan: <b>1 tampak depan · 2 serong/samping · 3 dalam ruangan · 4 detail pekerjaan</b>. Ikuti arahan di layar, tahan diam sebentar lalu geser pelan. Rekaman berhenti sendiri di 10 detik; tombol berhenti aktif setelah 5 detik.</p>
     </section>
     <section class="card-s" id="vidSec" aria-labelledby="hVid">
       <h2 id="hVid">Video bebas (keliling bangunan)</h2>
@@ -285,6 +285,7 @@
     <span class="vf-msg" id="vrMsg"></span>
     <span class="vf-chips" id="vrChips"></span>
     <span class="vr-time" id="vrTime" hidden></span>
+    <span class="vr-shot" id="vrShot" hidden><i class="vr-fig" id="vrFig"></i><span id="vrShotD"></span></span>
   </div>
   <div class="vf-bar">
     <button class="vf-btn" id="vrClose" type="button">Tutup</button>
