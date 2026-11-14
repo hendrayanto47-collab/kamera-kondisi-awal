@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.4.2 · 14 Nov 2026";
+const APP_VERSION = "2.5.0 · 14 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -89,7 +89,7 @@ const photos = new Map();
 const videos = new Map();
 function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
-  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, skip: v.skip, metaDirty: v.metaDirty, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
+  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
 const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs"];
 function persist(k) {
@@ -761,7 +761,7 @@ $("vidAudio").addEventListener("change", e => { vidAudio = e.target.checked; try
 
 function saveVideo(v, msg) {
   const k = "#vid|" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-  v.gs = false; videos.set(k, v); persistVid(k); render(); cloudSoon();
+  v.gs = false; v.fixed = 1; videos.set(k, v); persistVid(k); render(); cloudSoon();
   toast(msg || `Video tersimpan (${fmtDur(v.dur || 0)}, ${(v.blob.size / 1048576).toFixed(1)} MB).`);
   return k;
 }
@@ -1622,11 +1622,12 @@ async function cloudSync(manual) {
           return;
         }
         cloudProg = `Mengambil video dari HP lain… ${down + 1}/${pullTotal} (video lebih lama)`; renderCloud();
-        const blob = await GD.download(f.id);
-        const plain = e.plain ? await GD.download(e.plain.id) : undefined;
+        let blob = await GD.download(f.id);
+        let plain = e.plain ? await GD.download(e.plain.id) : undefined;
+        if (window.KKAFix) { if (await KKAFix.needsFix(blob)) blob = await KKAFix.fix(blob, +a.dur); if (plain && await KKAFix.needsFix(plain)) plain = await KKAFix.fix(plain, +a.dur); }
         videos.set(k, { blob, plain, nostamp: a.ns === "1" || undefined, t: +a.t || Date.now(), dur: +a.dur || 0, title: a.title || "Video",
           mime: blob.type, ext: a.ext || "mp4", room: a.room || undefined, shot: a.shot || undefined, st: a.st !== undefined && a.st !== "" ? +a.st : undefined,
-          gid: f.id, gidP: e.plain ? e.plain.id : undefined, gs: true });
+          gid: f.id, gidP: e.plain ? e.plain.id : undefined, gs: true, fixed: 1 });
         persistVid(k); down++; paint();
       }
     };
@@ -1646,6 +1647,9 @@ async function cloudSync(manual) {
     // ---- 5+6) Kirim foto & video baru — 3 sekaligus agar cepat; video ruangan didahulukan agar tidak menunggu semua foto
     const jobs = [];
     for (const [k, v] of [...videos]) {
+      if (v.gs && v.reup) { jobs.push({ rank: 0, run: async () => { // ganti isi file Drive dengan video yang sudah diperbaiki
+        for (const [id, b] of [[v.gid, v.blob], [v.gidP, v.plain]]) if (id && b) { try { await GD.put(b, {}, id); } catch (e) { if (e.status !== 404) throw e; } }
+        v.reup = undefined; persistVid(k); } }); continue; }
       if (v.gs && v.metaDirty && v.room && paket.some(x => x.id === v.room)) { jobs.push({ rank: 0, run: () => upVideoMeta(k, v) }); continue; }
       if (v.gs) continue;
       if (v.room && !paket.some(x => x.id === v.room)) continue;
@@ -1819,4 +1823,20 @@ openDb().then(async d => {
   const merged = [...new Set([...STAGES, ...used])].sort((a, b) => a - b);
   if (merged.length !== STAGES.length) { STAGES = merged; saveStages(); }
   renderStageEd(); render(); renderCloud(); cloudSoon(1500);
+  repairVideos();
 });
+/* Video lama (sebelum v2.5.0) tersimpan tanpa keterangan durasi → galeri menampilkan 00:00 dan tidak bisa digeser.
+   Diperbaiki sekali di latar; salinan di Drive ikut diganti isinya saat sinkron. */
+async function repairVideos() {
+  if (!window.KKAFix) return;
+  let n = 0;
+  for (const [k, v] of [...videos]) {
+    if (v.fixed) continue;
+    try {
+      if (await KKAFix.needsFix(v.blob)) { v.blob = await KKAFix.fix(v.blob, v.dur); if (v.url) { URL.revokeObjectURL(v.url); v.url = null; } n++; if (v.gid) v.reup = true; }
+      if (v.plain && await KKAFix.needsFix(v.plain)) { v.plain = await KKAFix.fix(v.plain, v.dur); if (v.purl) { URL.revokeObjectURL(v.purl); v.purl = null; } if (v.gidP) v.reup = true; }
+      v.fixed = 1; persistVid(k);
+    } catch (e) {}
+  }
+  if (n) { render(); toast(`${n} video lama diperbaiki: durasi kini terbaca. Unduh/bagikan ulang bila perlu.`); cloudSoon(2000); }
+}

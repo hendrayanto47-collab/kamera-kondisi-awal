@@ -202,8 +202,10 @@
     const main = makeRecorder(rec.canvas, a ? "share" : null);
     const plain = rec.plain ? makeRecorder(rec.plain, a ? "clone" : null) : null;
     rec.mime = main.mime;
-    Promise.all([main.done, plain ? plain.done : null]).then(([blob, pblob]) => {
+    Promise.all([main.done, plain ? plain.done : null]).then(async ([blob, pblob]) => {
       const dur = Math.min((Date.now() - rec.t0) / 1000, rec.opts.maxSec || MAX_SEC), o = rec.opts;
+      // susun ulang agar durasi terbaca & bisa digeser di galeri/WhatsApp/Drive
+      if (window.KKAFix) { blob = await KKAFix.fix(blob, dur); if (pblob) pblob = await KKAFix.fix(pblob, dur); }
       const v = { blob, mime: blob.type, dur, t: Date.now() - dur * 1000, ext: extOf(blob.type) };
       if (pblob && pblob.size) v.plain = pblob;
       if (rec.mode === "plain") v.nostamp = true;
@@ -348,7 +350,8 @@
     const cancelled = mk.cancel; mk = null;
     if (cancelled) { o.onError("Pembuatan video dibatalkan."); return; }
     const type = (r.mimeType || mime || "video/webm").split(";")[0];
-    const blob = new Blob(chunks, { type });
+    let blob = new Blob(chunks, { type });
+    if (window.KKAFix) blob = await KKAFix.fix(blob, total);
     o.onSaved({ blob, mime: type, dur: total, t: Date.now(), ext: extOf(type) });
   }
   $("mkCancel").addEventListener("click", () => { if (mk) mk.cancel = true; });
