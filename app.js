@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.4.1 · 14 Nov 2026";
+const APP_VERSION = "2.4.2 · 14 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1596,6 +1596,9 @@ async function cloudSync(manual) {
       const a = f.appProperties; if (a.kind === "state" || !a.k) continue;
       const e = byK.get(a.k) || {}; e[a.var === "plain" ? "plain" : "main"] = f; byK.set(a.k, e);
     }
+    let pullTotal = 0;
+    for (const [k, e] of byK) { const a = e.main && e.main.appProperties; if (!a) continue;
+      if (a.kind === "photo" ? !(photos.get(k) && photos.get(k).gid === e.main.id) : !videos.get(k)) pullTotal++; }
     const pullOne = async (k, e) => {
       const f = e.main; if (!f) return; const a = f.appProperties;
       if (a.kind === "photo") {
@@ -1605,12 +1608,12 @@ async function cloudSync(manual) {
           if (!loc.gid && loc.t >= +a.t) { loc.gid = f.id; persist(k); return; }
           if (loc.gid) return;
         }
-        cloudProg = `Mengambil foto dari HP lain… ${down + 1}`; renderCloud();
+        cloudProg = `Mengambil foto dari HP lain… ${down + 1}/${pullTotal}`; renderCloud();
         const blob = await GD.download(f.id);
         if (loc && loc.url) URL.revokeObjectURL(loc.url);
         photos.set(k, { blob, t: +a.t || Date.now(), lat: numOr(a.lat), lng: numOr(a.lng), acc: numOr(a.acc), sv: a.sv || undefined, cap: a.cap || undefined,
           gid: f.id, gmod: f.modifiedTime, gs: true, url: URL.createObjectURL(blob) });
-        persist(k); down++;
+        persist(k); down++; paint();
       } else if (a.kind === "video") {
         const loc = videos.get(k);
         if (loc) {
@@ -1618,16 +1621,19 @@ async function cloudSync(manual) {
           else if (loc.gs && !loc.metaDirty && (a.shot || "") !== (loc.shot || "")) { loc.shot = a.shot || undefined; persistVid(k); }
           return;
         }
-        cloudProg = `Mengambil video dari HP lain… ${down + 1}`; renderCloud();
+        cloudProg = `Mengambil video dari HP lain… ${down + 1}/${pullTotal} (video lebih lama)`; renderCloud();
         const blob = await GD.download(f.id);
         const plain = e.plain ? await GD.download(e.plain.id) : undefined;
         videos.set(k, { blob, plain, nostamp: a.ns === "1" || undefined, t: +a.t || Date.now(), dur: +a.dur || 0, title: a.title || "Video",
           mime: blob.type, ext: a.ext || "mp4", room: a.room || undefined, shot: a.shot || undefined, st: a.st !== undefined && a.st !== "" ? +a.st : undefined,
           gid: f.id, gidP: e.plain ? e.plain.id : undefined, gs: true });
-        persistVid(k); down++;
+        persistVid(k); down++; paint();
       }
     };
-    const pulls = [...byK];
+    // foto (kecil) diambil dulu, baru video; tampilan diperbarui bertahap selama mengunduh
+    const pulls = [...byK].sort((x, y) => ((x[1].main || {}).appProperties?.kind === "video") - ((y[1].main || {}).appProperties?.kind === "video"));
+    let lastPaint = 0;
+    const paint = () => { if (Date.now() - lastPaint > 1500) { lastPaint = Date.now(); render(); } };
     await Promise.all([0, 1, 2].map(async () => { while (pulls.length) { const [k, e] = pulls.shift(); await pullOne(k, e); } }));
 
     // ---- 3) Yang sudah dihapus di HP lain ikut dihapus di sini
