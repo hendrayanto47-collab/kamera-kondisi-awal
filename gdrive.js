@@ -128,6 +128,7 @@
     return req(`${API}/files/${id}?addParents=${addParent}${rm ? "&removeParents=" + rm : ""}&fields=id,modifiedTime`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta || {}) });
   }
+  const patch = (id, meta) => req(`${API}/files/${id}?fields=id,modifiedTime`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta) });
   const download = id => req(`${API}/files/${id}?alt=media`, {}, true).then(r => r.blob());
   const trash = id => req(`${API}/files/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: '{"trashed":true}' })
     .catch(e => { if (e.status !== 404) throw e; });
@@ -138,7 +139,7 @@
   }
 
   window.GD = {
-    enabled, login, logout, me, list, folder, forgetFolders, put, move, download, trash, makePublic, AuthError,
+    enabled, login, logout, me, list, folder, forgetFolders, put, move, patch, download, trash, makePublic, AuthError,
     get valid() { return valid(); },
     get email() { return tok && tok.email; },
     get known() { return !!(tok && (tok.email || tok.access)); },

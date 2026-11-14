@@ -330,7 +330,7 @@
         if (i !== cur) { // pindah adegan: hentikan klip sebelumnya, putar klip ini dari awal
           const prev = scenes[cur]; if (prev && prev.vid) prev.vid.pause();
           cur = i;
-          if (s.vid) { try { s.vid.currentTime = 0; } catch (e) {} s.vid.play().catch(() => { s.vid.muted = true; s.vid.play().catch(() => {}); }); }
+          if (s.vid) { try { s.vid.currentTime = s.start || 0; } catch (e) {} s.vid.play().catch(() => { s.vid.muted = true; s.vid.play().catch(() => {}); }); }
         }
         paintScene(s, local, 1);
         if (local < FADE && i > 0) paintScene(scenes[i - 1], scenes[i - 1].sec, 1 - local / FADE);
