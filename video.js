@@ -4,7 +4,7 @@
    Menyediakan window.KKAVid. */
 (function () {
   const $ = id => document.getElementById(id);
-  const W = 1280, H = 720, FPS = 30;
+  let W = 1280, H = 720; const FPS = 30; // ukuran bingkai rekaman: Full HD bila kamera mendukung, selain itu HD
   const MAX_SEC = 5 * 60; // batas rekaman agar file tidak terlalu besar
   const two = n => String(n).padStart(2, "0");
   const mmss = s => `${two(Math.floor(s / 60))}:${two(Math.floor(s % 60))}`;
@@ -61,7 +61,8 @@
     showShot(o);
     setMsg("wait", "Membuka kamera…"); setRecUI(false);
     let stream;
-    const video = { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } };
+    const hq = o.quality !== "720";
+    const video = { facingMode: { ideal: "environment" }, width: { ideal: hq ? 1920 : 1280 }, height: { ideal: hq ? 1080 : 720 }, frameRate: { ideal: 30 } };
     try { stream = await navigator.mediaDevices.getUserMedia({ video, audio: o.audio }); }
     catch (e) {
       if (o.audio) { try { stream = await navigator.mediaDevices.getUserMedia({ video, audio: false }); o.audio = false; } catch (e2) {} }
@@ -72,6 +73,10 @@
     const v = $("vrVideo"); v.srcObject = stream; v.muted = true;
     try { await v.play(); } catch (e) {}
     await new Promise(r => (v.videoWidth ? r() : v.addEventListener("loadedmetadata", r, { once: true })));
+    // Full HD hanya bila kamera benar-benar memberi ≥1080p (tidak memperbesar gambar kecil)
+    { const big = Math.max(v.videoWidth, v.videoHeight), small = Math.min(v.videoWidth, v.videoHeight);
+      if (hq && big >= 1900 && small >= 1060) { W = 1920; H = 1080; } else { W = 1280; H = 720; } }
+    rec.hq = W === 1920;
     rec.canvas = $("vrCanvas"); rec.canvas.width = W; rec.canvas.height = H;
     rec.ctx = rec.canvas.getContext("2d");
     // Mode "both": selain video bercap, salinan bingkai tanpa cap direkam bersamaan (dua file dari satu rekaman)
@@ -129,13 +134,13 @@
     rec.busyOverlay = true;
     try {
       const o = rec.opts, now = new Date(), g = o.gps ? o.gps() : null;
-      const oh = 300;
+      const oh = Math.round(300 * H / 720);
       const cv = rec.ovBuf || (rec.ovBuf = document.createElement("canvas"));
       cv.width = W; cv.height = oh;
       const x = cv.getContext("2d"); x.clearRect(0, 0, W, oh);
       if (g && window.KKAGeo) {
         const addr = o.address ? o.address(g) : "";
-        await KKAGeo.drawCard(x, W, oh, { u: 1, lat: g.lat, lng: g.lng, acc: g.acc, src: g.src, addr, fallbackHead: addr || "Indonesia",
+        await KKAGeo.drawCard(x, W, oh, { u: H / 720, lat: g.lat, lng: g.lng, acc: g.acc, src: g.src, addr, fallbackHead: addr || "Indonesia",
           when: now, seconds: true, note: `${o.title} · ${o.idLine} · Video dokumentasi revitalisasi`, app: "Kamera Revit SD" });
       } else {
         x.fillStyle = "rgba(0,0,0,.6)"; x.fillRect(14, oh - 60, W - 28, 46);
@@ -196,7 +201,9 @@
     const cs = canvas.captureStream(FPS);
     if (audio) rec.stream.getAudioTracks().forEach(t => cs.addTrack(audio === "clone" ? t.clone() : t));
     let r;
-    try { r = new MediaRecorder(cs, mime ? { mimeType: mime, videoBitsPerSecond: 2500000 } : { videoBitsPerSecond: 2500000 }); }
+    // Kualitas: Full HD 8 Mbps (6 Mbps per file bila dua versi sekaligus), HD 4 Mbps
+    const bps = rec.hq ? (rec.plain ? 6000000 : 8000000) : 4000000;
+    try { r = new MediaRecorder(cs, mime ? { mimeType: mime, videoBitsPerSecond: bps } : { videoBitsPerSecond: bps }); }
     catch (e) { r = new MediaRecorder(cs); }
     const out = { r, cs, chunks: [], mime: r.mimeType || mime || "video/webm" };
     r.ondataavailable = e => { if (e.data && e.data.size) out.chunks.push(e.data); };
@@ -257,6 +264,7 @@
      Dirender waktu-nyata ke kanvas lalu direkam (durasi render = durasi video). */
   let mk = null;
   async function makeReport(scenes, o) {
+    W = 1280; H = 720;
     if (!supported()) { o.onError("HP/browser ini belum mendukung pembuatan video."); return; }
     mk = { cancel: false };
     const cv = $("mkCanvas"); cv.width = W; cv.height = H;

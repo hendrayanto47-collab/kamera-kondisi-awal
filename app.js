@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.5.1 · 14 Nov 2026";
+const APP_VERSION = "2.6.0 · 14 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -89,7 +89,7 @@ const photos = new Map();
 const videos = new Map();
 function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
-  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
+  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
 const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs"];
 function persist(k) {
@@ -750,6 +750,11 @@ let vidAudio = true;
 try { vidAudio = localStorage.getItem("kka-vaudio") !== "0"; } catch (e) {}
 $("vidAudio").checked = vidAudio;
 /* Stamp di video: "both" = satu rekaman menghasilkan dua file (bercap + polos), "stamp", atau "plain" */
+let vidQuality = "1080";
+try { vidQuality = localStorage.getItem("kka-vqual") || "1080"; } catch (e) {}
+$("pVQual").value = vidQuality;
+$("pVQual").addEventListener("change", e => { vidQuality = e.target.value; try { localStorage.setItem("kka-vqual", vidQuality); } catch (er) {}
+  toast(vidQuality === "1080" ? "Perekam aplikasi: Full HD 1080p (lebih tajam, file lebih besar)." : "Perekam aplikasi: HD 720p (lebih ringan)."); });
 let vidHorizon = true;
 try { vidHorizon = localStorage.getItem("kka-hlock") !== "0"; } catch (e) {}
 $("pHLock").checked = vidHorizon;
@@ -821,14 +826,87 @@ function renderRoomVid() {
       <div class="rvshots">${shotsFor(p).map((x, i) => { const has = clips.some(([, v]) => v.shot === x.id);
         return `<span class="${has ? "on" : ""}">${has ? "✓" : i + 1} ${esc(x.s)}</span>`; }).join("")}</div>
       ${clips.some(([, v]) => !v.shot) ? `<p class="hint rvwarn">Ada video tanpa label sudut. Ketuk nomor videonya lalu pilih <b>Sudut video ini</b> agar tersusun rapi.</p>` : ""}
-      ${n ? `<div class="rvclips">${clips.map(([k, v], i) => `<button type="button" class="rvclip" data-rvplay="${esc(k)}" aria-label="Putar video ${i + 1}">${two(i + 1)}${shotOf(p, v) ? " " + esc(shotOf(p, v).s) : ""}<small>${Math.round(v.dur || 0)} dtk${v.plain ? " · 2v" : v.nostamp ? " · polos" : ""}</small></button>`).join("")}</div>` : ""}
+      ${n ? `<div class="rvclips">${clips.map(([k, v], i) => `<button type="button" class="rvclip" data-rvplay="${esc(k)}" aria-label="Putar video ${i + 1}">${two(i + 1)}${shotOf(p, v) ? " " + esc(shotOf(p, v).s) : ""}<small>${Math.round(v.dur || 0)} dtk${v.native ? " · 📱" : v.plain ? " · 2v" : v.nostamp ? " · polos" : ""}</small></button>`).join("")}</div>` : ""}
       <div class="acts"><button class="btn${ok ? "" : " primary"}" type="button" data-rvrec="${esc(p.id)}">${n ? "Rekam lagi" : "Rekam 4 video"}</button>
+      <button class="btn" type="button" data-rvnat="${esc(p.id)}" title="Pakai aplikasi Kamera bawaan HP: stabil &amp; kualitas terbaik">📱 Kamera HP</button>
       ${hasP && hasS ? `<button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="stamp">Unggah (stamp)</button><button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="polos">Unggah (polos)</button>`
         : `<button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="${hasP ? "polos" : "stamp"}" ${n ? "" : "disabled"}>Unggah ke Drive</button>`}</div></div>`;
   }).join("");
   $("rvSum").textContent = `${done}/${paket.length} ruangan lengkap (min. ${RV_MIN} video @ ${RV_MIN_SEC}–${RV_MAX_SEC} detik)`;
 }
 $("rvStage").addEventListener("change", e => { rvStage = +e.target.value; try { localStorage.setItem("kka-rvstage", rvStage); } catch (er) {} renderRoomVid(); });
+/* ---------- Rekam dengan aplikasi Kamera bawaan HP ----------
+   <input capture> membuka kamera asli iPhone/Android (stabilisasi & kualitas penuh). Hasilnya video ASLI tanpa cap.
+   Arahan sudut ditampilkan dulu di kartu ruangan; setelah merekam, durasi (5–10 dtk) dan orientasi (landscape) diperiksa. */
+let natPending = null;
+const natInput = document.createElement("input");
+natInput.type = "file"; natInput.accept = "video/*"; natInput.setAttribute("capture", "environment"); natInput.hidden = true;
+document.body.appendChild(natInput);
+function natPanel(p, st) {
+  const sh = nextShot(p, st);
+  const card = $("rvList").querySelector(`[data-rvnat="${CSS.escape(p.id)}"]`).closest(".rvroom");
+  card.querySelectorAll(".rvnat").forEach(x => x.remove());
+  const box = document.createElement("div"); box.className = "rvnat";
+  box.innerHTML = `<div class="rvnat-row"><i class="vr-fig">${sh && window.KKA ? KKA.PLAN[sh.fig] || "" : ""}</i>
+      <div><b>${esc(sh ? sh.t : "Video tambahan")}</b><span>${esc(sh ? sh.d : "4 sudut wajib sudah lengkap. Rekam bagian lain yang perlu ditunjukkan.")}</span></div></div>
+    <p class="hint" style="margin:0">Kamera HP akan terbuka. <b>Pegang HP mendatar (landscape)</b>, rekam <b>5–10 detik</b>, lalu tekan Gunakan/OK.</p>
+    <div class="acts"><button class="btn primary" type="button" data-natgo="${esc(p.id)}">Buka Kamera HP</button><button class="btn ghost" type="button" data-natx>Batal</button></div>`;
+  card.querySelector(".acts").after(box);
+  natPending = { pid: p.id, st, shot: sh ? sh.id : undefined };
+}
+function videoMeta(blob) {
+  return new Promise(res => {
+    const v = document.createElement("video"), url = URL.createObjectURL(blob); let done = false;
+    const fin = r => { if (done) return; done = true; URL.revokeObjectURL(url); res(r); };
+    v.preload = "metadata"; v.muted = true; v.playsInline = true;
+    v.onloadedmetadata = () => {
+      if (isFinite(v.duration) && v.duration > 0) return fin({ dur: v.duration, w: v.videoWidth, h: v.videoHeight });
+      v.ontimeupdate = () => { v.ontimeupdate = null; fin({ dur: v.duration, w: v.videoWidth, h: v.videoHeight }); };
+      try { v.currentTime = 1e6; } catch (e) { fin({ dur: 0, w: v.videoWidth, h: v.videoHeight }); }
+    };
+    v.onerror = () => fin(null);
+    setTimeout(() => fin({ dur: 0, w: v.videoWidth || 0, h: v.videoHeight || 0 }), 8000);
+    v.src = url;
+  });
+}
+/* Video .mov dari iPhone: wadahnya sama dengan MP4 (ISO BMFF). Merek ftyp diganti ke mp42 tanpa mengubah ukuran,
+   sehingga tersimpan sebagai .mp4 sesuai syarat portal. */
+async function movToMp4(file) {
+  const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  const t = String.fromCharCode(...head.slice(4, 8));
+  if (t !== "ftyp") return null;
+  const size = (head[0] << 24 | head[1] << 16 | head[2] << 8 | head[3]) >>> 0;
+  if (size < 16 || size > 64) return null;
+  const f = head.slice(0, size);
+  const put = (o, s4) => { for (let i = 0; i < 4; i++) f[o + i] = s4.charCodeAt(i); };
+  put(8, "mp42"); f.fill(0, 12, 16);
+  for (let o = 16; o + 4 <= size; o += 4) put(o, o === 16 ? "isom" : "mp42");
+  return new Blob([f, file.slice(size)], { type: "video/mp4" });
+}
+natInput.addEventListener("change", async () => {
+  const file = natInput.files && natInput.files[0]; natInput.value = "";
+  const pend = natPending; natPending = null;
+  $("rvList").querySelectorAll(".rvnat").forEach(x => x.remove());
+  if (!file || !pend) return;
+  const p = paket.find(x => x.id === pend.pid); if (!p) return;
+  toast("Memeriksa video…");
+  const m = await videoMeta(file);
+  if (!m) return toast("Video tidak bisa dibaca. Di iPhone: Pengaturan › Kamera › Format › pilih \"Paling Kompatibel\", lalu rekam ulang.");
+  if (m.w && m.h && m.h > m.w) return toast("Video direkam TEGAK (portrait). Ketentuan wajib mendatar (landscape) — rekam ulang dengan HP dimiringkan.");
+  if (m.dur && m.dur < RV_MIN_SEC - 0.3) return toast(`Video terlalu pendek (${m.dur.toFixed(1)} dtk). Minimal ${RV_MIN_SEC} detik — rekam ulang.`);
+  if (m.dur && m.dur > RV_MAX_SEC + 0.7) return toast(`Video terlalu panjang (${m.dur.toFixed(1)} dtk). Maksimal ${RV_MAX_SEC} detik — rekam ulang lebih singkat.`);
+  const isMov = /quicktime|\.mov$/i.test(file.type + " " + file.name);
+  let blob = file, ext = "mp4", mime = file.type || "video/mp4";
+  if (isMov) { const b = await movToMp4(file); if (b) { blob = b; mime = "video/mp4"; } else { ext = "mov"; mime = "video/quicktime"; } }
+  else if (/webm/.test(mime)) ext = "webm";
+  else blob = new Blob([file], { type: mime });
+  const sh = shotsFor(p).find(x => x.id === pend.shot);
+  const t = file.lastModified && Math.abs(Date.now() - file.lastModified) < 3600e3 ? file.lastModified : Date.now();
+  saveVideo({ blob, mime, ext, dur: m.dur || 0, t, title: `${p.nama} · ${sh ? sh.t : "Video tambahan"} · ${stageName(pend.st)}`,
+    room: p.id, st: pend.st, shot: pend.shot, nostamp: true, native: true },
+    `Video Kamera HP tersimpan (${(m.dur || 0).toFixed(1)} dtk, ${(blob.size / 1048576).toFixed(1)} MB).${(() => { const nx = shotsFor(p).find(x => x.id !== pend.shot && !roomClips(p.id, pend.st).some(([, c]) => c.shot === x.id)); return nx ? " Berikutnya: " + nx.t + "." : ""; })()}`);
+});
+
 // Label sudut & pilihan "pakai di video utuh" untuk klip yang sudah direkam (mis. sebelum ada arahan sudut)
 $("rvList").addEventListener("change", e => {
   const sh = e.target.closest("[data-rvshot]"), use = e.target.closest("[data-rvuse]");
@@ -858,7 +936,7 @@ function recordRoom(p, st) {
   KKAVid.openRecorder({
     title: `${p.nama} · ${stageName(st)}`, titleFn: () => `${p.nama} · ${clipNo()}${clipNo() <= RV_MIN ? "/" + RV_MIN : ""} ${shot().t}`,
     shotFn: shot,
-    multi: true, minSec: RV_MIN_SEC, maxSec: RV_MAX_SEC, stampMode: vidStamp, horizon: vidHorizon,
+    multi: true, minSec: RV_MIN_SEC, maxSec: RV_MAX_SEC, stampMode: vidStamp, horizon: vidHorizon, quality: vidQuality,
     audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO PER RUANGAN",
     address: vidAddress,
     onSaved: v => {
@@ -873,6 +951,10 @@ function recordRoom(p, st) {
 $("rvList").addEventListener("click", e => {
   const r = e.target.closest("[data-rvrec]"), sh = e.target.closest("[data-rvshare]"), pl = e.target.closest("[data-rvplay]");
   if (r) { const p = paket.find(x => x.id === r.dataset.rvrec); if (p) recordRoom(p, rvSt()); }
+  const nat = e.target.closest("[data-rvnat]"), go = e.target.closest("[data-natgo]");
+  if (nat) { const p = paket.find(x => x.id === nat.dataset.rvnat); if (p) natPanel(p, rvSt()); }
+  if (go) natInput.click();
+  if (e.target.closest("[data-natx]")) { natPending = null; e.target.closest(".rvnat").remove(); }
   if (sh) {
     const ver = sh.dataset.ver || "stamp", p = paket.find(x => x.id === sh.dataset.rvshare), st = rvSt();
     const clips = roomClips(p.id, st).map(([k, v], i) => [k, v, i]).filter(([, v]) => verBlob(v, ver));
@@ -972,7 +1054,7 @@ $("vidRec").addEventListener("click", () => {
   if (!profil.nama) { toast("Isi nama sekolah dan NPSN dulu."); return; }
   refreshGps();
   KKAVid.openRecorder({
-    title, stampMode: vidStamp, horizon: vidHorizon, audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
+    title, stampMode: vidStamp, horizon: vidHorizon, quality: vidQuality, audio: vidAudio, idLine: `${profil.nama || "-"} · NPSN ${profil.npsn || "-"}`, zone: zoneLabel, gps: currentGps, tag: "VIDEO DOKUMENTASI",
     address: vidAddress,
     onSaved: v => saveVideo({ ...v, title }),
     onError: m => toast(m),
@@ -1631,7 +1713,7 @@ async function cloudSync(manual) {
         let plain = e.plain ? await GD.download(e.plain.id) : undefined;
         if (window.KKAFix) { if (await KKAFix.needsFix(blob)) blob = await KKAFix.fix(blob, +a.dur); if (plain && await KKAFix.needsFix(plain)) plain = await KKAFix.fix(plain, +a.dur); }
         videos.set(k, { blob, plain, nostamp: a.ns === "1" || undefined, t: +a.t || Date.now(), dur: +a.dur || 0, title: a.title || "Video",
-          mime: blob.type, ext: a.ext || "mp4", room: a.room || undefined, shot: a.shot || undefined, st: a.st !== undefined && a.st !== "" ? +a.st : undefined,
+          mime: blob.type, ext: a.ext || "mp4", room: a.room || undefined, shot: a.shot || undefined, native: a.nat === "1" || undefined, st: a.st !== undefined && a.st !== "" ? +a.st : undefined,
           gid: f.id, gidP: e.plain ? e.plain.id : undefined, gs: true, fixed: 1 });
         persistVid(k); down++; paint();
       }
@@ -1696,7 +1778,7 @@ async function cloudSync(manual) {
         name = rvName(p, idx, v, "stamp"); nameP = name;
       } else { path = "Video lainnya"; pathP = "Video lainnya/polos"; name = vidName(k); nameP = name.replace(/(\.\w+)$/, " - polos$1"); }
       const base = { kka: "file", npsn, kind: "video", k, t: sv(v.t), dur: sv(Math.round((v.dur || 0) * 10) / 10), title: sv(v.title).slice(0, 90),
-        ext: sv(v.ext), room: sv(v.room), st: sv(v.st), ns: v.nostamp ? "1" : "", shot: sv(v.shot) };
+        ext: sv(v.ext), room: sv(v.room), st: sv(v.st), ns: v.nostamp ? "1" : "", shot: sv(v.shot), nat: v.native ? "1" : "" };
       if (!v.gid) { v.gid = (await GD.put(v.blob, { name, parents: [await F(path)], appProperties: { ...base, var: "main" } })).id; persistVid(k); }
       if (v.plain && !v.gidP) { v.gidP = (await GD.put(v.plain, { name: nameP, parents: [await F(pathP)], appProperties: { ...base, var: "plain" } })).id; persistVid(k); }
       if (videos.get(k) === v) { v.gs = true; persistVid(k); }
