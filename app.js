@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.7.0 · 16 Nov 2026";
+const APP_VERSION = "2.8.0 · 16 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -524,9 +524,9 @@ function renderPaket(st) {
             <span class="cam">${ph ? "Lihat" : "Ambil foto"}</span>
             ${ph && cloudOn() ? `<span class="sync${ph.gs ? " ok" : ""}">${ph.gs ? "☁ Drive" : "Antre"}</span>` : ""}
             ${ph && ph.warn && ph.warn.length ? `<span class="warnb" title="${esc(ph.warn.join(" "))}">${ph.warn.length} catatan</span>` : ""}</button>
-          <div class="slab"><span>${a.l}</span>${ph
+          <div class="slab"><span>${a.l}</span><span class="slab-acts">${ph
             ? `<button type="button" data-retake="${esc(k)}">Ulangi</button>`
-            : `<button type="button" class="gbtn" data-guide="${esc(k)}">Panduan</button>`}</div>
+            : `<button type="button" class="gbtn" data-guide="${esc(k)}">Panduan</button>`}<button type="button" class="gbtn" data-gal="${esc(k)}" aria-label="Pilih dari galeri: ${a.l} ${esc(p.nama)}">Galeri</button></span></div>
         </div>`;
       }).join("")}</div>`;
     list.appendChild(el);
@@ -666,7 +666,8 @@ $("gCancel").addEventListener("click", () => ($("guide").hidden = true));
 
 $("list").addEventListener("click", e => {
   const r = e.target.closest("[data-retake]"), s = e.target.closest("[data-shoot]"), d = e.target.closest("[data-del]"),
-    g = e.target.closest("[data-guide]"), sh = e.target.closest("[data-share]");
+    g = e.target.closest("[data-guide]"), sh = e.target.closest("[data-share]"), gl = e.target.closest("[data-gal]");
+  if (gl) { galTarget = gl.dataset.gal; $("galPick").click(); return; }
   if (sh) { const p = paket.find(x => x.id === sh.dataset.share); return shareKeys(slotsFor(p, view).map(a => KEY(p.id, a.k, view)).filter(k => photos.has(k)), `${p.nama} · ${stageName(view)}`); }
   if (g) return showGuide(g.dataset.guide, false);
   if (r) return openShoot(r.dataset.retake);
@@ -1207,6 +1208,7 @@ async function stamp(img, takenAt, gps, p, a, opts = {}) {
   const tglPendek = when.toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
   const gpsTxt = !gps ? "GPS tidak tersedia"
     : gps.src === "sekolah" ? `Koord. sekolah ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`
+    : gps.src === "foto" ? `GPS foto ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`
     : `GPS ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)} (±${gps.acc} m)`;
   const lines = [
     [profil.nama || "-", "NPSN " + (profil.npsn || "-"), profil.wil].filter(Boolean).join("  ·  "),
@@ -1415,6 +1417,75 @@ $("picker").addEventListener("change", e => {
   const f = e.target.files && e.target.files[0];
   if (f && target) processFile(f, target, 0);
 });
+/* ---------- Unggah foto manual dari galeri ----------
+   EXIF JPEG: tanggal asli (DateTimeOriginal) & GPS bila ada. HEIC/PNG atau foto tanpa EXIF: tanggal file & koordinat sekolah. */
+async function readExif(file) {
+  try {
+    const buf = await file.slice(0, 256 * 1024).arrayBuffer(), dv = new DataView(buf);
+    if (dv.getUint16(0) !== 0xFFD8) return null;
+    let o = 2;
+    while (o + 4 < dv.byteLength) {
+      const m = dv.getUint16(o), len = dv.getUint16(o + 2);
+      if (m === 0xFFE1 && dv.getUint32(o + 4) === 0x45786966) { // "Exif"
+        const t0 = o + 10, le = dv.getUint16(t0) === 0x4949;
+        const u16 = x => dv.getUint16(x, le), u32 = x => dv.getUint32(x, le);
+        const ifd = off => { const n = u16(t0 + off), e = {}; for (let i = 0; i < n; i++) { const p = t0 + off + 2 + i * 12; e[u16(p)] = { type: u16(p + 2), cnt: u32(p + 4), val: p + 8 }; } return e; };
+        const str = en => { const off = en.cnt > 4 ? t0 + u32(en.val) : en.val; let s = ""; for (let i = 0; i < en.cnt - 1; i++) s += String.fromCharCode(dv.getUint8(off + i)); return s; };
+        const rat3 = en => { const off = t0 + u32(en.val); const r = i => u32(off + i * 8) / (u32(off + i * 8 + 4) || 1); return r(0) + r(1) / 60 + r(2) / 3600; };
+        const out = {}, i0 = ifd(u32(t0 + 4));
+        if (i0[0x8769]) { const ei = ifd(u32(i0[0x8769].val)), d = ei[0x9003] || ei[0x9004];
+          const mm = d && str(d).match(/(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/);
+          if (mm) { const t = new Date(+mm[1], +mm[2] - 1, +mm[3], +mm[4], +mm[5], +mm[6]).getTime(); if (t > Date.UTC(2015, 0, 1) && t <= Date.now() + 6e4) out.t = t; } }
+        if (i0[0x8825]) { const g = ifd(u32(i0[0x8825].val));
+          if (g[2] && g[4]) { let lat = rat3(g[2]), lng = rat3(g[4]);
+            if (g[1] && str({ ...g[1], cnt: 2 }) === "S") lat = -lat; if (g[3] && str({ ...g[3], cnt: 2 }) === "W") lng = -lng;
+            if (lat || lng) { out.lat = lat; out.lng = lng; } } }
+        return out;
+      }
+      if ((m & 0xFF00) !== 0xFF00) break;
+      o += 2 + len;
+    }
+  } catch (e) {}
+  return null;
+}
+// Lokasi foto galeri: GPS di EXIF bila wajar (≤ 3 km dari sekolah bila koordinat sekolah diisi), selain itu koordinat sekolah
+function galGps(ex) {
+  const sk = schoolKoor();
+  if (ex && ex.lat != null && (!sk || KKA.distanceM(ex, sk) <= KKA.LIMIT.schoolFar)) return { lat: ex.lat, lng: ex.lng, acc: null, src: "foto" };
+  return sk ? { lat: sk.lat, lng: sk.lng, acc: null, src: "sekolah", gal: true } : null;
+}
+let galTarget = null;
+$("galPick").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = "";
+  if (f && galTarget) processFile(f, galTarget, 0, { exif: null });
+});
+// Kegiatan: banyak foto sekaligus, langsung disimpan (catatan pemeriksaan tetap dicatat di tiap foto)
+$("galMulti").addEventListener("change", async e => {
+  const files = [...(e.target.files || [])]; e.target.value = "";
+  const cap = pendingCap; if (!files.length || !cap) return;
+  let ok = 0, fail = 0;
+  for (const [i, f] of files.entries()) {
+    toast(`Mengimpor foto ${i + 1}/${files.length}…`);
+    try {
+      const key = "#keg|" + Date.now().toString(36) + i;
+      const img = await loadImage(f), info = KKA.analyze(img);
+      const ex = await readExif(f), takenAt = ex && ex.t ? ex.t : takenTime(f), gps = galGps(ex);
+      const c = stampCtx(key, cap);
+      const others = [...photos.entries()].filter(([k]) => k.startsWith("#keg|")).map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
+      const checks = KKA.runChecks({ info, takenAt, gps, others, allowPortrait: true });
+      const res = await stamp(img, takenAt, gps, c.p, c.a, c.opts);
+      photos.set(key, { ...res, hash: info.hash, warn: checks.filter(x => !x.ok && !/dari galeri/.test(x.text)).map(x => x.text), cap, synced: false, gs: false, url: URL.createObjectURL(res.blob) });
+      persist(key); ok++;
+    } catch (err) { fail++; }
+  }
+  render(); cloudSoon(1500);
+  toast(`${ok} foto kegiatan "${cap}" ditambahkan${fail ? `, ${fail} gagal dibaca (pakai JPG/PNG)` : ""}.`);
+});
+$("kegGal").addEventListener("click", () => {
+  const cap = $("kegCap").value.trim();
+  if (!cap) { toast("Isi keterangan kegiatan dulu, mis. \"H2 pembongkaran\"."); $("kegCap").focus(); return; }
+  pendingCap = cap; $("galMulti").click();
+});
 // Putar gambar searah jarum jam (derajat kelipatan 90)
 function rotated(img, deg) {
   if (!deg) return img;
@@ -1425,7 +1496,7 @@ function rotated(img, deg) {
   x.drawImage(img, -img.width / 2, -img.height / 2);
   return c;
 }
-async function processFile(f, key, turn) {
+async function processFile(f, key, turn, gal) {
   const q = parseKey(key);
   const cap = q.keg ? pendingCap : "";
   const c = stampCtx(key, cap);
@@ -1434,8 +1505,10 @@ async function processFile(f, key, turn) {
     toast("Memeriksa foto…");
     const img = rotated(await loadImage(f), turn);
     const info = KKA.analyze(img);
-    const takenAt = takenTime(f);
-    const gps = currentGps();
+    // Dari galeri: tanggal & lokasi diambil dari EXIF foto bila ada (bukan lokasi HP saat ini)
+    const ex = gal ? (gal.exif || await readExif(f)) : null;
+    const takenAt = ex && ex.t ? ex.t : takenTime(f);
+    const gps = gal ? galGps(ex) : currentGps();
     // Foto kembar diperiksa dalam paket yang sama (beberapa ruang kelas bisa berada di gedung yang sama)
     // Foto kembar: dibandingkan dengan foto lain di paket & tahap yang sama (foto kegiatan: sesama kegiatan)
     const others = [...photos.entries()]
@@ -1445,7 +1518,7 @@ async function processFile(f, key, turn) {
     const res = await stamp(img, takenAt, gps, p, a, c.opts);
     const warn = checks.filter(c => !c.ok).map(c => c.text);
     if (pending) URL.revokeObjectURL(pending.url);
-    pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn };
+    pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn, gal };
     showReview(p, a, checks);
   } catch (err) {
     toast("Foto tidak bisa dibaca. Coba ambil ulang atau pilih format JPG/PNG.");
@@ -1454,9 +1527,9 @@ async function processFile(f, key, turn) {
 // Bila foto terlanjur menyamping, putar 90° lalu periksa ulang
 $("rRotate").addEventListener("click", () => {
   if (!pending) return;
-  const { raw, key, turn } = pending;
+  const { raw, key, turn, gal } = pending;
   URL.revokeObjectURL(pending.url); pending = null;
-  processFile(raw, key, ((turn || 0) + 90) % 360);
+  processFile(raw, key, ((turn || 0) + 90) % 360, gal);
 });
 function showReview(p, a, checks) {
   const nWarn = checks.filter(c => !c.ok).length;

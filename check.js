@@ -228,6 +228,8 @@
 
     // 7. GPS
     if (!gps) add(false, "GPS tidak aktif dan koordinat sekolah belum diisi. Koordinat tidak tercetak di foto.");
+    else if (gps.src === "foto") add(true, "Lokasi diambil dari data GPS foto");
+    else if (gps.gal) add(true, "Foto galeri tanpa data lokasi (atau di luar area sekolah): dicetak koordinat sekolah");
     else if (gps.src === "sekolah")
       add(false, gps.phoneFar > LIMIT.schoolFar
         ? `Lokasi HP terbaca ${(gps.phoneFar / 1000).toFixed(gps.phoneFar >= 10000 ? 0 : 1)} km dari sekolah (lokasi perkiraan jaringan, bukan GPS); dicetak koordinat sekolah.`

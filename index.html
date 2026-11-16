@@ -70,7 +70,8 @@
       <label class="f">Keterangan kegiatan<input type="text" id="kegCap" list="kegCapList" placeholder="Pilih atau ketik, mis. Pekerjaan atap" autocomplete="off"></label>
       <datalist id="kegCapList"></datalist>
       <button class="btn primary big" id="kegShoot" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="4"/></svg> Ambil foto kegiatan</button>
-      <p class="hint">Keterangan tercetak di cap foto dan nama file. Jumlah foto bebas.</p>
+      <button class="btn big" id="kegGal" type="button">🖼️ Pilih dari galeri (bisa banyak)</button>
+      <p class="hint">Keterangan tercetak di cap foto dan nama file, dan menjadi nama folder di Drive. Jumlah foto bebas. Foto dari galeri memakai tanggal &amp; lokasi asli fotonya bila ada; bila tidak ada lokasi, dipakai koordinat sekolah.</p>
     </section>
     <div class="keglist" id="kegList"></div>
   </section>
@@ -306,6 +307,8 @@
 </div>
 <input type="file" id="vidPicker" accept="video/*" capture="environment" hidden>
 <input type="file" id="picker" accept="image/*" capture="environment" hidden>
+<input type="file" id="galPick" accept="image/*" hidden>
+<input type="file" id="galMulti" accept="image/*" multiple hidden>
 <div class="toast" id="toast" hidden></div>
 
 <script src="config.js"></script>

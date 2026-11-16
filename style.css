@@ -370,3 +370,4 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .rvnat-row{display:flex;gap:10px;align-items:flex-start}
 .rvnat-row b{display:block;margin-bottom:2px}
 .rvnat-row span{font-size:13px;line-height:1.4;color:var(--muted)}
+.slab-acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
