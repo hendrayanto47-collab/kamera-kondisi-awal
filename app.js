@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.8.2 · 16 Nov 2026";
+const APP_VERSION = "2.9.0 · 16 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -91,7 +91,7 @@ function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
   dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -258,6 +258,7 @@ function onGpsErr(err) {
 }
 function renderGps() {
   renderKoorWarn();
+  if (screen === "kegiatan" && $("kegLocHint")) try { renderKegLoc(); } catch (e) {}
   if (!fix) return;
   $("gpsBtn").hidden = true; $("gpsRetry").hidden = false;
   $("useHereBtn").hidden = !(fix.acc <= 30) || !!profil.lokKunci;
@@ -554,7 +555,7 @@ function kegGroups(keys) {
 }
 function renderKeg() {
   const keys = kegKeys();
-  renderKegChips();
+  renderKegChips(); renderKegLoc();
   $("kegList").innerHTML = keys.length ? kegGroups(keys).map(([f, ks]) => `<section class="keggroup">
     <div class="keghead"><b>📁 ${esc(f)}</b><small>${ks.length} foto</small>
       <button class="btn" type="button" data-kegshare="${esc(f)}">Unggah ke Drive</button>
@@ -563,7 +564,7 @@ function renderKeg() {
     const ph = photos.get(k);
     return `<figure class="kegitem"><button type="button" class="shot has" data-view-k="${esc(k)}" aria-label="Lihat ${esc(ph.cap || "foto kegiatan")}">
       <img src="${ph.url}" alt="">${ph.up || ph.gs ? '<span class="sync ok">✓ Drive</span>' : ""}</button>
-      <figcaption><small>${tgl(ph.t)} ${jam(ph.t)}</small></figcaption></figure>`;
+      <figcaption><small>${tgl(ph.t)} ${jam(ph.t)}${ph.away ? " · 📍 luar sekolah" : ""}</small></figcaption></figure>`;
   }).join("")}</div></section>`).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
   $("tBar").style.width = keys.length ? "100%" : "0";
@@ -651,6 +652,7 @@ function openCamera(k, cap) {
 }
 
 function gpsChip() {
+  if (screen === "kegiatan" && kegAway) { const g = awayGps(); return g ? { ok: g.acc <= KKA.LIMIT.gpsAcc, label: `Luar sekolah ±${g.acc} m` } : { ok: false, label: "Luar sekolah · GPS…" }; }
   const g = currentGps();
   if (!g) return { ok: false, label: "GPS mati" };
   if (g.src === "sekolah") return { ok: true, label: "Koord. sekolah" };
@@ -1274,9 +1276,10 @@ async function stamp(img, takenAt, gps, p, a, opts = {}) {
 }
 
 // Judul & label cap untuk sebuah kunci foto
-function stampCtx(k, cap) {
+function stampCtx(k, cap, away) {
   const q = parseKey(k);
-  if (q.keg) return { p: { nama: cap || "Kegiatan" }, a: { l: "Kegiatan", k: "keg" }, opts: { title: `KEGIATAN — ${(cap || "").toUpperCase()}`, tag: "DOKUMENTASI KEGIATAN" } };
+  if (away === undefined) away = !!(photos.get(k) || {}).away;
+  if (q.keg) return { p: { nama: cap || "Kegiatan" }, a: { l: "Kegiatan", k: "keg" }, opts: { title: `KEGIATAN — ${(cap || "").toUpperCase()}`, tag: "DOKUMENTASI KEGIATAN", away } };
   return { p: paket.find(x => x.id === q.pid), a: angleOf(q.ak), opts: { tag: stageTag(q.st) } };
 }
 
@@ -1292,8 +1295,9 @@ function wrapText(x, text, maxW, maxLines) {
   if (out.length > maxLines) { out.length = maxLines; out[maxLines - 1] += "…"; }
   return out;
 }
-async function addressFor(gps) {
-  if (profil.alamat && profil.alamat.trim()) return { text: profil.alamat.trim(), exact: true };
+async function addressFor(gps, away) {
+  if (!away && profil.alamat && profil.alamat.trim()) return { text: profil.alamat.trim(), exact: true };
+  if (!gps) return { text: "", exact: false };
   const found = await Promise.race([KKAGeo.reverse(gps.lat, gps.lng), new Promise(r => setTimeout(() => r(null), 3500))]);
   return found ? { text: found, exact: true } : { text: profil.wil || "", exact: false };
 }
@@ -1301,7 +1305,7 @@ async function addressFor(gps) {
    judul kecamatan/provinsi + bendera, Plus Code & alamat, Lat/Long, tanggal (AM/PM GMT), Note (sudut, ruang, tahap, sekolah). */
 const niceTag = t => String(t || "").toLowerCase().replace(/(^|\s|\()\S/g, c => c.toUpperCase()).replace(/Sd\b/g, "SD");
 async function stampFull(x, W, H, when, gps, p, a, opts) {
-  const ad = await addressFor(gps);
+  const ad = await addressFor(gps, opts.away);
   const what = opts.title ? niceTag(opts.title) : `${a.l} — ${p.nama}`;
   const note = `${what} · ${niceTag(opts.tag || "KONDISI AWAL 0%")} · ${profil.nama || "-"} (NPSN ${profil.npsn || "-"})`;
   await KKAGeo.drawCard(x, W, H, { lat: gps.lat, lng: gps.lng, acc: gps.acc, src: gps.src, addr: ad.exact ? ad.text : "",
@@ -1352,7 +1356,7 @@ $("fixBtn").addEventListener("click", async () => {
    Pemeriksaan jarak tidak dilakukan selama koordinat sekolah sendiri dicurigai salah. */
 const wrongLocKeys = () => {
   const sk = koorSuspect() ? null : schoolKoor();
-  return [...photos.entries()].filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.lat != null &&
+  return [...photos.entries()].filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.lat != null && !ph.away &&
     ((sk && KKA.distanceM({ lat: ph.lat, lng: ph.lng }, sk) > KKA.LIMIT.schoolFar) || (ph.acc != null && ph.acc >= KKA.LIMIT.approx))).map(([k]) => k);
 };
 function renderWrongLoc() {
@@ -1413,8 +1417,8 @@ async function restampOld(btn) {
     i++; btn.textContent = `Memperbarui ${i}/${keys.length}…`;
     const ph = photos.get(k), c = stampCtx(k, ph.cap);
     const sk = schoolKoor();
-    const gps = ph.lat != null ? { lat: ph.lat, lng: ph.lng, acc: ph.acc ?? null, src: ph.acc == null ? "sekolah" : "gps" }
-      : { ...sk, acc: null, src: "sekolah" };
+    const gps = ph.lat != null ? { lat: ph.lat, lng: ph.lng, acc: ph.acc ?? null, src: ph.acc == null ? (ph.away ? "foto" : "sekolah") : "gps" }
+      : ph.away ? null : { ...sk, acc: null, src: "sekolah" };
     try {
       const img = await createImageBitmap(ph.orig || ph.blob);
       const res = await stamp(img, ph.t, gps, c.p, c.a, { ...c.opts, cover: !ph.orig });
@@ -1442,6 +1446,31 @@ $("picker").addEventListener("change", e => {
   const f = e.target.files && e.target.files[0];
   if (f && target) processFile(f, target, 0);
 });
+/* ---------- Kegiatan di luar sekolah (mis. pengambilan dana di bank, survei toko material) ----------
+   Lokasi HP dipakai apa adanya (tidak diganti koordinat sekolah) dan alamat dicari dari lokasi itu. */
+var kegAway = false;
+try { kegAway = sessionStorage.getItem("kka-kegaway") === "1"; } catch (e) {}
+function setKegAway(v) {
+  kegAway = v; try { sessionStorage.setItem("kka-kegaway", v ? "1" : "0"); } catch (e) {}
+  $("kegAway").classList.toggle("on", v); $("kegAtSchool").classList.toggle("on", !v); renderKegLoc();
+}
+$("kegAway").addEventListener("click", () => { setKegAway(true); refreshGps(); toast("Lokasi kegiatan: di luar sekolah. Stamp memakai lokasi & alamat HP saat memotret."); });
+$("kegAtSchool").addEventListener("click", () => { setKegAway(false); toast("Lokasi kegiatan: di sekolah."); });
+function awayGps() {
+  const live = fix && Date.now() - fix.t < 300000 ? fix : null;
+  return live && live.acc < KKA.LIMIT.approx ? { ...live, src: "gps" } : null;
+}
+function renderKegLoc() {
+  const live = fix && Date.now() - fix.t < 300000 ? fix : null, far = live ? farFromSchool(live) : 0;
+  $("kegLocHint").textContent = kegAway
+    ? (live && live.acc < KKA.LIMIT.approx ? `Stamp memakai lokasi HP saat ini (±${live.acc} m) dan alamatnya, bukan alamat sekolah.` : "Menunggu GPS HP… Bila GPS tidak terkunci, koordinat tidak dicetak. Berdirilah di tempat terbuka.")
+    : live && live.acc <= KKA.LIMIT.gpsAcc && far > KKA.LIMIT.schoolFar
+      ? `📍 HP Anda ${(far / 1000).toFixed(far >= 10000 ? 0 : 1)} km dari sekolah. Bila kegiatan ini memang di luar sekolah, pilih "Di luar sekolah".`
+      : "Pilih \"Di luar sekolah\" untuk kegiatan di bank, kantor dinas, toko material, dll.";
+  $("kegLocHint").classList.toggle("warnc", !kegAway && live && live.acc <= KKA.LIMIT.gpsAcc && far > KKA.LIMIT.schoolFar);
+}
+setKegAway(kegAway);
+
 /* ---------- Unggah foto manual dari galeri ----------
    EXIF JPEG: tanggal asli (DateTimeOriginal) & GPS bila ada. HEIC/PNG atau foto tanpa EXIF: tanggal file & koordinat sekolah. */
 async function readExif(file) {
@@ -1474,7 +1503,8 @@ async function readExif(file) {
   return null;
 }
 // Lokasi foto galeri: GPS di EXIF bila wajar (≤ 3 km dari sekolah bila koordinat sekolah diisi), selain itu koordinat sekolah
-function galGps(ex) {
+function galGps(ex, away) {
+  if (away) return ex && ex.lat != null ? { lat: ex.lat, lng: ex.lng, acc: null, src: "foto" } : null;
   const sk = schoolKoor();
   if (ex && ex.lat != null && (!sk || KKA.distanceM(ex, sk) <= KKA.LIMIT.schoolFar)) return { lat: ex.lat, lng: ex.lng, acc: null, src: "foto" };
   return sk ? { lat: sk.lat, lng: sk.lng, acc: null, src: "sekolah", gal: true } : null;
@@ -1494,12 +1524,12 @@ $("galMulti").addEventListener("change", async e => {
     try {
       const key = "#keg|" + Date.now().toString(36) + i;
       const img = await loadImage(f), info = KKA.analyze(img);
-      const ex = await readExif(f), takenAt = ex && ex.t ? ex.t : takenTime(f), gps = galGps(ex);
-      const c = stampCtx(key, cap);
+      const ex = await readExif(f), takenAt = ex && ex.t ? ex.t : takenTime(f), gps = galGps(ex, kegAway);
+      const c = stampCtx(key, cap, kegAway);
       const others = [...photos.entries()].filter(([k]) => k.startsWith("#keg|")).map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
       const checks = KKA.runChecks({ info, takenAt, gps, others, allowPortrait: true });
       const res = await stamp(img, takenAt, gps, c.p, c.a, c.opts);
-      photos.set(key, { ...res, hash: info.hash, warn: checks.filter(x => !x.ok && !/dari galeri/.test(x.text)).map(x => x.text), cap, synced: false, gs: false, url: URL.createObjectURL(res.blob) });
+      photos.set(key, { ...res, hash: info.hash, warn: checks.filter(x => !x.ok && !/dari galeri/.test(x.text)).map(x => x.text), cap, away: kegAway || undefined, synced: false, gs: false, url: URL.createObjectURL(res.blob) });
       persist(key); ok++;
     } catch (err) { fail++; }
   }
@@ -1524,7 +1554,8 @@ function rotated(img, deg) {
 async function processFile(f, key, turn, gal) {
   const q = parseKey(key);
   const cap = q.keg ? pendingCap : "";
-  const c = stampCtx(key, cap);
+  const away = !!(q.keg && kegAway);
+  const c = stampCtx(key, cap, away);
   const p = c.p, a = c.a;
   try {
     toast("Memeriksa foto…");
@@ -1533,17 +1564,17 @@ async function processFile(f, key, turn, gal) {
     // Dari galeri: tanggal & lokasi diambil dari EXIF foto bila ada (bukan lokasi HP saat ini)
     const ex = gal ? (gal.exif || await readExif(f)) : null;
     const takenAt = ex && ex.t ? ex.t : takenTime(f);
-    const gps = gal ? galGps(ex) : currentGps();
+    const gps = gal ? galGps(ex, away) : away ? awayGps() : currentGps();
     // Foto kembar diperiksa dalam paket yang sama (beberapa ruang kelas bisa berada di gedung yang sama)
     // Foto kembar: dibandingkan dengan foto lain di paket & tahap yang sama (foto kegiatan: sesama kegiatan)
     const others = [...photos.entries()]
       .filter(([k]) => { if (k === key) return false; const o = parseKey(k); return q.keg ? o.keg : !o.keg && o.pid === q.pid && o.st === q.st; })
-      .map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
-    const checks = KKA.runChecks({ info, takenAt, gps, others, allowPortrait: q.keg });
+      .map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: away ? null : ph.lat, lng: away ? null : ph.lng }));
+    const checks = KKA.runChecks({ info, takenAt, gps: gps && away ? { ...gps, away: true } : gps, others, allowPortrait: q.keg });
     const res = await stamp(img, takenAt, gps, p, a, c.opts);
     const warn = checks.filter(c => !c.ok).map(c => c.text);
     if (pending) URL.revokeObjectURL(pending.url);
-    pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn, gal };
+    pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined, away: away || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn, gal };
     showReview(p, a, checks);
   } catch (err) {
     toast("Foto tidak bisa dibaca. Coba ambil ulang atau pilih format JPG/PNG.");
@@ -1843,7 +1874,7 @@ async function cloudSync(manual) {
         const blob = await GD.download(f.id);
         if (loc && loc.url) URL.revokeObjectURL(loc.url);
         photos.set(k, { blob, t: +a.t || Date.now(), lat: numOr(a.lat), lng: numOr(a.lng), acc: numOr(a.acc), sv: a.sv || undefined, cap: a.cap || undefined,
-          gid: f.id, gmod: f.modifiedTime, gs: true, gpath: a.gp || undefined, url: URL.createObjectURL(blob) });
+          gid: f.id, gmod: f.modifiedTime, gs: true, gpath: a.gp || undefined, away: a.aw === "1" || undefined, url: URL.createObjectURL(blob) });
         persist(k); down++; paint();
       } else if (a.kind === "video") {
         const loc = videos.get(k);
@@ -1902,7 +1933,7 @@ async function cloudSync(manual) {
     async function upPhoto(k, ph) {
       const q = parseKey(k);
       const path = q.keg ? `Kegiatan/${kegFolder(ph)}` : `FOTO_REVITSD_${q.st}/${clean(paket.find(p => p.id === q.pid).nama)}`;
-      const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90), gp: path.slice(0, 100) };
+      const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90), gp: path.slice(0, 100), aw: ph.away ? "1" : "" };
       const meta = { name: fname(k), appProperties: props };
       let r = null;
       if (ph.gid) { try { r = await GD.put(ph.blob, meta, ph.gid); } catch (e) { if (e.status !== 404) throw e; } }

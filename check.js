@@ -229,10 +229,13 @@
     // 7. GPS
     if (!gps) add(false, "GPS tidak aktif dan koordinat sekolah belum diisi. Koordinat tidak tercetak di foto.");
     else if (gps.src === "foto") add(true, "Lokasi diambil dari data GPS foto");
+    else if (gps.away) add(gps.acc <= LIMIT.gpsAcc, gps.acc <= LIMIT.gpsAcc ? `Lokasi kegiatan di luar sekolah (GPS ±${gps.acc} m)` : `Lokasi di luar sekolah, akurasi GPS rendah (±${gps.acc} m)`);
     else if (gps.gal) add(true, "Foto galeri tanpa data lokasi (atau di luar area sekolah): dicetak koordinat sekolah");
     else if (gps.src === "sekolah")
       add(false, gps.phoneFar > LIMIT.schoolFar
-        ? `Lokasi HP terbaca ${(gps.phoneFar / 1000).toFixed(gps.phoneFar >= 10000 ? 0 : 1)} km dari sekolah (lokasi perkiraan jaringan, bukan GPS); dicetak koordinat sekolah.`
+        ? (gps.phoneAcc != null && gps.phoneAcc <= LIMIT.gpsAcc
+          ? `HP berada ${(gps.phoneFar / 1000).toFixed(gps.phoneFar >= 10000 ? 0 : 1)} km dari sekolah; dicetak koordinat sekolah. Untuk kegiatan di luar sekolah (mis. bank), pilih "Di luar sekolah" di menu Kegiatan.`
+          : `Lokasi HP terbaca ${(gps.phoneFar / 1000).toFixed(gps.phoneFar >= 10000 ? 0 : 1)} km dari sekolah (lokasi perkiraan jaringan, bukan GPS); dicetak koordinat sekolah.`)
         : `GPS HP ${gps.phoneAcc ? "tidak akurat (±" + gps.phoneAcc + " m)" : "belum terkunci"}; dicetak koordinat sekolah.`);
     else if (gps.acc > LIMIT.gpsAcc) add(false, `Akurasi GPS rendah (±${gps.acc} m). Tunggu sebentar di area terbuka.`);
     else {
