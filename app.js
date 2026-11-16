@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.6.0 · 14 Nov 2026";
+const APP_VERSION = "2.7.0 · 16 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -91,7 +91,7 @@ function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
   dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -545,14 +545,24 @@ function renderPaket(st) {
     : `${stageName(st)} lengkap. Ketuk Unggah ke Drive.`;
 }
 
+/* Foto kegiatan dikelompokkan per judul (mis. "H2 pembongkaran"): satu folder per judul di Drive & ZIP */
+const kegFolder = ph => clean((ph.cap || "").trim() || "Tanpa judul");
+function kegGroups(keys) {
+  const g = new Map();
+  for (const k of keys) { const ph = photos.get(k), f = kegFolder(ph); if (!g.has(f)) g.set(f, []); g.get(f).push(k); }
+  return [...g.entries()].sort((a, b) => Math.max(...b[1].map(k => photos.get(k).t)) - Math.max(...a[1].map(k => photos.get(k).t)));
+}
 function renderKeg() {
   const keys = kegKeys();
-  $("kegList").innerHTML = keys.length ? keys.map(k => {
+  $("kegList").innerHTML = keys.length ? kegGroups(keys).map(([f, ks]) => `<section class="keggroup">
+    <div class="keghead"><b>📁 ${esc(f)}</b><small>${ks.length} foto</small>
+      <button class="btn" type="button" data-kegshare="${esc(f)}">Unggah ke Drive</button></div>
+    <div class="keggrid">${ks.map(k => {
     const ph = photos.get(k);
     return `<figure class="kegitem"><button type="button" class="shot has" data-view-k="${esc(k)}" aria-label="Lihat ${esc(ph.cap || "foto kegiatan")}">
-      <img src="${ph.url}" alt="">${ph.up ? '<span class="sync ok">✓ Drive</span>' : ""}</button>
-      <figcaption><b>${esc(ph.cap || "Kegiatan")}</b><small>${tgl(ph.t)} ${jam(ph.t)}</small></figcaption></figure>`;
-  }).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
+      <img src="${ph.url}" alt="">${ph.up || ph.gs ? '<span class="sync ok">✓ Drive</span>' : ""}</button>
+      <figcaption><small>${tgl(ph.t)} ${jam(ph.t)}</small></figcaption></figure>`;
+  }).join("")}</div></section>`).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
   $("tBar").style.width = keys.length ? "100%" : "0";
   $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length; renderShareBtn();
@@ -565,7 +575,11 @@ $("kegShoot").addEventListener("click", () => {
   if (!cap) { toast("Isi keterangan kegiatan dulu, mis. \"Pekerjaan atap\"."); $("kegCap").focus(); return; }
   openCamera("#keg|" + Date.now().toString(36), cap);
 });
-$("kegList").addEventListener("click", e => { const b = e.target.closest("[data-view-k]"); if (b) openViewer(b.dataset.viewK); });
+$("kegList").addEventListener("click", e => {
+  const b = e.target.closest("[data-view-k]"); if (b) openViewer(b.dataset.viewK);
+  const sh = e.target.closest("[data-kegshare]");
+  if (sh) { const f = sh.dataset.kegshare; shareKeys(kegKeys().filter(k => kegFolder(photos.get(k)) === f), `Kegiatan - ${f}`); }
+});
 
 // ---------- Aksi pada daftar ----------
 let target = null;
@@ -1488,7 +1502,7 @@ $("rCancel").addEventListener("click", closeReview);
 /* Contoh: 2026-11-03 09.12 - Kelas 1 - Tampak Depan.jpg */
 function fname(k) {
   const q = parseKey(k), ph = photos.get(k);
-  if (q.keg) return `${tgl(ph.t)} ${jam(ph.t)} - Kegiatan - ${clean(ph.cap || "Kegiatan")}.jpg`;
+  if (q.keg) return `${tgl(ph.t)} ${jam(ph.t)}.${two(new Date(ph.t).getSeconds())} - Kegiatan - ${clean(ph.cap || "Kegiatan")}.jpg`;
   const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak);
   return `${tgl(ph.t)} ${jam(ph.t)} - ${clean(p.nama)} - ${a.l}${q.st ? " - " + q.st + "%" : ""}.jpg`;
 }
@@ -1533,7 +1547,7 @@ $("zipBtn").onclick = async () => {
   for (const k of viewKeys()) {
     const ph = photos.get(k), q = parseKey(k);
     first = Math.min(first, ph.t);
-    const sub = q.keg ? "" : clean(paket.find(x => x.id === q.pid).nama) + "/";
+    const sub = q.keg ? kegFolder(ph) + "/" : clean(paket.find(x => x.id === q.pid).nama) + "/";
     entries.push({ path: `${rootName}/${sub}${fname(k)}`, blob: ph.blob, date: new Date(ph.t) });
   }
   toast("Menyusun ZIP…");
@@ -1608,7 +1622,7 @@ $("shareAllBtn").onclick = () => {
        FOTO_REVITSD_<persen>/<Ruang>/…jpg
        VIDEO_REVITSD_<persen>/<Ruang>/01 - <Ruang>.mp4        (video bercap, atau polos bila "polos saja")
        VIDEO_REVITSD_<persen> (polos)/<Ruang>/01 - <Ruang>.mp4 (salinan polos dari mode dua versi)
-       Kegiatan/, Video lainnya/, _data-aplikasi.json (daftar ruang, tahap, profil)
+       Kegiatan/<judul kegiatan>/, Video lainnya/, _data-aplikasi.json (daftar ruang, tahap, profil)
    Tiap file diberi appProperties (npsn, kind, k = kunci di aplikasi, dst.) agar HP lain bisa memetakannya kembali.
    Catatan: dideklarasikan dengan function/var karena saveState() & persist() bisa terpanggil sebelum blok ini dijalankan. */
 var cloudBusy = false, cloudAgain = false, cloudTimer = null, cloudApplying = false, cloudMsg = "", cloudProg = "", cloudLast = 0, cloudForce = false;
@@ -1699,7 +1713,7 @@ async function cloudSync(manual) {
         const blob = await GD.download(f.id);
         if (loc && loc.url) URL.revokeObjectURL(loc.url);
         photos.set(k, { blob, t: +a.t || Date.now(), lat: numOr(a.lat), lng: numOr(a.lng), acc: numOr(a.acc), sv: a.sv || undefined, cap: a.cap || undefined,
-          gid: f.id, gmod: f.modifiedTime, gs: true, url: URL.createObjectURL(blob) });
+          gid: f.id, gmod: f.modifiedTime, gs: true, gpath: a.gp || undefined, url: URL.createObjectURL(blob) });
         persist(k); down++; paint();
       } else if (a.kind === "video") {
         const loc = videos.get(k);
@@ -1743,6 +1757,12 @@ async function cloudSync(manual) {
       jobs.push({ rank: v.room ? 0 : 2, run: () => upVideo(k, v) });
     }
     for (const [k, ph] of [...photos]) {
+      if (ph.gs && ph.gid && k.startsWith("#keg|") && ph.gpath !== `Kegiatan/${kegFolder(ph)}`) { // pindahkan ke folder judulnya
+        jobs.push({ rank: 1, run: async () => { const path = `Kegiatan/${kegFolder(ph)}`;
+          try { await GD.move(ph.gid, await F(path)); } catch (e) { if (e.status !== 404) throw e; }
+          ph.gpath = path; persist(k); } });
+        continue;
+      }
       if (ph.gs || !(inPaket(k) || k.startsWith("#keg|"))) continue;
       jobs.push({ rank: 1, run: () => upPhoto(k, ph) });
     }
@@ -1751,14 +1771,14 @@ async function cloudSync(manual) {
     const tick = () => { cloudProg = `Mengirim ke Drive… ${up}/${total}`; renderCloud(); };
     async function upPhoto(k, ph) {
       const q = parseKey(k);
-      const path = q.keg ? "Kegiatan" : `FOTO_REVITSD_${q.st}/${clean(paket.find(p => p.id === q.pid).nama)}`;
-      const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90) };
+      const path = q.keg ? `Kegiatan/${kegFolder(ph)}` : `FOTO_REVITSD_${q.st}/${clean(paket.find(p => p.id === q.pid).nama)}`;
+      const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90), gp: path.slice(0, 100) };
       const meta = { name: fname(k), appProperties: props };
       let r = null;
       if (ph.gid) { try { r = await GD.put(ph.blob, meta, ph.gid); } catch (e) { if (e.status !== 404) throw e; } }
       if (!r) r = await GD.put(ph.blob, { ...meta, parents: [await F(path)], mimeType: "image/jpeg" });
       const cur = photos.get(k);
-      if (cur === ph) { ph.gid = r.id; ph.gmod = r.modifiedTime; ph.gs = true; persist(k); }
+      if (cur === ph) { ph.gid = r.id; ph.gmod = r.modifiedTime; ph.gs = true; ph.gpath = path; persist(k); }
       else if (cur && !cur.gid) { cur.gid = r.id; persist(k); } // diganti saat sedang dikirim: versi baru akan memperbarui file yang sama
     }
     async function upVideoMeta(k, v) { // label sudut berubah: perbarui nama file & keterangan di Drive
