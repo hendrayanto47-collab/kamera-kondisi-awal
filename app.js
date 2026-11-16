@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.9.0 · 16 Nov 2026";
+const APP_VERSION = "2.9.1 · 17 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -2013,6 +2013,7 @@ function renderCloud() {
       cloudLast ? "terakhir " + jam(cloudLast) : ""].filter(Boolean).join(" · ");
   $("cloudRelogin").hidden = GD.valid;
   $("cloudSyncBtn").hidden = !GD.valid; $("cloudSyncBtn").disabled = cloudBusy;
+  $("cloudSwitch").hidden = !GD.valid;
   // pilihan folder untuk tautan portal
   const sel = $("cloudFolder"), prev = sel.value;
   sel.innerHTML = STAGES.flatMap(st => [`FOTO_REVITSD_${st}`, `VIDEO_REVITSD_${st}`, `VIDEO_REVITSD_${st} (polos)`])
@@ -2046,12 +2047,34 @@ $("cloudLinkBtn").addEventListener("click", async () => {
   b.disabled = false;
 });
 $("cloudLink").addEventListener("focus", e => e.target.select());
+/* Ganti akun Google dalam satu ketukan: pastikan HP ini sudah memegang semua data dari akun lama,
+   lalu keluar dan langsung masuk ke akun baru. Semua foto & video di HP ini otomatis dikirim ke Drive akun baru. */
+$("cloudSwitch").addEventListener("click", e => {
+  const b = e.currentTarget;
+  if (cloudBusy) return toast("Tunggu sinkron selesai dulu.");
+  const errored = /Gagal|berakhir|internet/i.test(cloudMsg || "");
+  if (!GD.valid || errored || !cloudLast || Date.now() - cloudLast > 10 * 60000) {
+    toast("Sinkronkan dulu sampai \"Semua tersinkron\", agar semua foto & video dari akun lama sudah ada di HP ini.");
+    if (GD.valid) cloudSync(true); return;
+  }
+  if (cloudPending()) return toast(`Masih ada ${cloudPending()} file antre. Tunggu sampai semua tersinkron.`);
+  if (!b.dataset.armed) {
+    b.dataset.armed = 1; b.textContent = "Ketuk lagi: keluar & masuk akun baru";
+    toast(`HP ini memegang ${photos.size} foto & ${videos.size} video. Setelah masuk akun baru, semuanya dikirim ke Drive akun baru. Akun lama tidak dipakai lagi di HP ini.`);
+    setTimeout(() => { delete b.dataset.armed; b.textContent = "Ganti akun Google"; }, 6000); return;
+  }
+  if (pending || !$("review").hidden) return toast("Simpan atau batalkan foto yang sedang ditinjau dulu.");
+  GD.logout(); lsSet("kka-gnpsn", null);
+  try { sessionStorage.setItem("kka-switching", "1"); } catch (er) {}
+  GD.login(true); // pilih akun baru di halaman Google
+});
 
 // Pemicu sinkron: saat dibuka, kembali online, aplikasi tampil lagi, dan berkala tiap 2 menit
 (function cloudBoot() {
   if (!window.GD || !GD.enabled) { renderCloud(); return; }
   if (GD.loginError) { cloudForce = true; toast(GD.loginError === "access_denied" ? "Masuk Google dibatalkan." : "Perlu memilih akun Google lagi — ketuk Masuk."); }
-  if (GD.justLoggedIn) { goScreen("atur"); toast("Berhasil masuk Google. Menyinkronkan…"); setTimeout(() => $("cloudPanel").scrollIntoView({ block: "center" }), 300); }
+  let sw = false; try { sw = sessionStorage.getItem("kka-switching") === "1"; sessionStorage.removeItem("kka-switching"); } catch (e) {}
+  if (GD.justLoggedIn) { goScreen("atur"); toast(sw ? "Akun baru tersambung. Semua foto & video dikirim ke Drive akun baru — biarkan aplikasi terbuka." : "Berhasil masuk Google. Menyinkronkan…"); setTimeout(() => $("cloudPanel").scrollIntoView({ block: "center" }), 300); }
   renderCloud();
   if (cloudOn() && GD.valid) setTimeout(() => cloudSync(false), GD.justLoggedIn ? 300 : 1500);
   window.addEventListener("online", () => cloudSoon(1000));
