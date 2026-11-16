@@ -371,3 +371,8 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .rvnat-row b{display:block;margin-bottom:2px}
 .rvnat-row span{font-size:13px;line-height:1.4;color:var(--muted)}
 .slab-acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+.kegchips{display:grid;gap:6px;margin:10px 0 12px}
+.kegchips small{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.kegchips div{display:flex;flex-wrap:wrap;gap:6px}
+.kchip{font:600 13px inherit;font-family:inherit;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:99px;padding:6px 12px;cursor:pointer}
+.kchip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}

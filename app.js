@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.8.1 · 16 Nov 2026";
+const APP_VERSION = "2.8.2 · 16 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -554,6 +554,7 @@ function kegGroups(keys) {
 }
 function renderKeg() {
   const keys = kegKeys();
+  renderKegChips();
   $("kegList").innerHTML = keys.length ? kegGroups(keys).map(([f, ks]) => `<section class="keggroup">
     <div class="keghead"><b>📁 ${esc(f)}</b><small>${ks.length} foto</small>
       <button class="btn" type="button" data-kegshare="${esc(f)}">Unggah ke Drive</button>
@@ -570,7 +571,27 @@ function renderKeg() {
   $("dockMsg").textContent = keys.length ? `${keys.length} foto kegiatan. Ketuk Unggah ke Drive untuk mengirim semuanya.`
     : "Foto kegiatan: rapat, pekerjaan berlangsung, material datang, serah terima.";
 }
-$("kegCapList").innerHTML = KEG_PRESET.map(t => `<option value="${esc(t)}">`).join("");
+/* Pilihan kegiatan siap ketuk: judul yang pernah dipakai (terbaru dulu) + daftar kegiatan umum revitalisasi */
+function renderKegChips() {
+  const used = [], seen = new Set();
+  [...photos.entries()].filter(([k]) => k.startsWith("#keg|")).sort((a, b) => b[1].t - a[1].t)
+    .forEach(([, ph]) => { const c = (ph.cap || "").trim(); if (c && !seen.has(c.toLowerCase())) { seen.add(c.toLowerCase()); used.push(c); } });
+  const preset = KEG_PRESET.filter(t => !seen.has(t.toLowerCase()));
+  const cur = $("kegCap").value.trim().toLowerCase();
+  const chip = t => `<button type="button" class="kchip${t.toLowerCase() === cur ? " on" : ""}" data-kcap="${esc(t)}">${esc(t)}</button>`;
+  $("kegChips").innerHTML = (used.length ? `<small>Terakhir dipakai</small><div>${used.slice(0, 8).map(chip).join("")}</div>` : "")
+    + `<small>Kegiatan umum</small><div>${preset.map(chip).join("")}</div>`;
+  $("kegCapList").innerHTML = [...used, ...preset].map(t => `<option value="${esc(t)}">`).join("");
+}
+$("kegChips").addEventListener("click", e => {
+  const b = e.target.closest("[data-kcap]"); if (!b) return;
+  $("kegCap").value = b.dataset.kcap; renderKegChips();
+  toast(`Kegiatan: ${b.dataset.kcap}. Ketuk Ambil foto atau Pilih dari galeri. Judul bisa diubah, mis. ditambah "H2".`);
+});
+$("kegCap").addEventListener("input", () => {
+  const cur = $("kegCap").value.trim().toLowerCase();
+  $("kegChips").querySelectorAll(".kchip").forEach(b => b.classList.toggle("on", b.dataset.kcap.toLowerCase() === cur));
+});
 $("kegShoot").addEventListener("click", () => {
   const cap = $("kegCap").value.trim();
   if (!cap) { toast("Isi keterangan kegiatan dulu, mis. \"Pekerjaan atap\"."); $("kegCap").focus(); return; }
