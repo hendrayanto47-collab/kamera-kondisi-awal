@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.8.0 · 16 Nov 2026";
+const APP_VERSION = "2.8.1 · 16 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -536,7 +536,7 @@ function renderPaket(st) {
   const anyPhoto = stageKeys(st).length > 0;
   $("tCount").textContent = cnt; $("tOf").hidden = false; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${st}%`;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
-  $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto; renderShareBtn();
+  $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto; $("galAllBtn").disabled = !anyPhoto; renderShareBtn();
   const kurang = paket.filter(p => ANGLES.some(a => !photos.has(KEY(p.id, a.k, st)))).length;
   $("dockMsg").textContent = !profil.nama
     ? "Isi dulu nama sekolah dan NPSN, lalu ketuk kotak foto untuk membuka kamera."
@@ -556,7 +556,8 @@ function renderKeg() {
   const keys = kegKeys();
   $("kegList").innerHTML = keys.length ? kegGroups(keys).map(([f, ks]) => `<section class="keggroup">
     <div class="keghead"><b>📁 ${esc(f)}</b><small>${ks.length} foto</small>
-      <button class="btn" type="button" data-kegshare="${esc(f)}">Unggah ke Drive</button></div>
+      <button class="btn" type="button" data-kegshare="${esc(f)}">Unggah ke Drive</button>
+      <button class="btn" type="button" data-keggal="${esc(f)}">Simpan ke galeri</button></div>
     <div class="keggrid">${ks.map(k => {
     const ph = photos.get(k);
     return `<figure class="kegitem"><button type="button" class="shot has" data-view-k="${esc(k)}" aria-label="Lihat ${esc(ph.cap || "foto kegiatan")}">
@@ -565,7 +566,7 @@ function renderKeg() {
   }).join("")}</div></section>`).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
   $("tBar").style.width = keys.length ? "100%" : "0";
-  $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length; renderShareBtn();
+  $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length; $("galAllBtn").disabled = !keys.length; renderShareBtn();
   $("dockMsg").textContent = keys.length ? `${keys.length} foto kegiatan. Ketuk Unggah ke Drive untuk mengirim semuanya.`
     : "Foto kegiatan: rapat, pekerjaan berlangsung, material datang, serah terima.";
 }
@@ -579,6 +580,8 @@ $("kegList").addEventListener("click", e => {
   const b = e.target.closest("[data-view-k]"); if (b) openViewer(b.dataset.viewK);
   const sh = e.target.closest("[data-kegshare]");
   if (sh) { const f = sh.dataset.kegshare; shareKeys(kegKeys().filter(k => kegFolder(photos.get(k)) === f), `Kegiatan - ${f}`); }
+  const gg = e.target.closest("[data-keggal]");
+  if (gg) { const f = gg.dataset.keggal; saveToGallery(kegKeys().filter(k => kegFolder(photos.get(k)) === f).map(k => ({ name: fname(k), blob: photos.get(k).blob, t: photos.get(k).t })), `Kegiatan - ${f}`); }
 });
 
 // ---------- Aksi pada daftar ----------
@@ -787,6 +790,7 @@ $("vidAudio").addEventListener("change", e => { vidAudio = e.target.checked; try
 function saveVideo(v, msg) {
   const k = "#vid|" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   v.gs = false; v.fixed = 1; videos.set(k, v); persistVid(k); render(); cloudSoon();
+  if (autoGal && !IS_IOS) download(v.room ? `${clean(v.title || "video")}.${v.ext || "mp4"}` : `${clean(v.title || "video")} ${tgl(v.t)}.${v.ext || "mp4"}`, v.blob, true);
   toast(msg || `Video tersimpan (${fmtDur(v.dur || 0)}, ${(v.blob.size / 1048576).toFixed(1)} MB).`);
   return k;
 }
@@ -997,14 +1001,14 @@ $("rvList").addEventListener("click", e => {
           ${shotsFor(rp).map(x => `<option value="${x.id}" ${v.shot === x.id ? "selected" : ""}>${esc(x.t)}</option>`).join("")}</select></label>
         <label class="chk"><input type="checkbox" data-rvuse="${esc(k)}" ${v.skip ? "" : "checked"}> Pakai di video utuh</label>
       </div>
-      <div class="acts"><button class="btn" type="button" data-rvdl="${esc(k)}">Unduh</button><button class="btn ghost" type="button" data-rvdel="${esc(k)}">Hapus video ${pl.firstChild.textContent}</button></div>`;
+      <div class="acts"><button class="btn" type="button" data-rvdl="${esc(k)}">Simpan ke galeri</button><button class="btn ghost" type="button" data-rvdel="${esc(k)}">Hapus video ${pl.firstChild.textContent}</button></div>`;
   }
   const vb = e.target.closest("[data-rvver]");
   if (vb) { const box = vb.closest(".rvplay"); box.querySelector("video").src = vb.dataset.rvver; box.querySelector("video").play().catch(() => {});
     box.querySelectorAll("[data-rvver]").forEach(b => b.classList.toggle("on", b === vb)); }
   const dl = e.target.closest("[data-rvdl]"), del = e.target.closest("[data-rvdel]");
-  if (dl) { const v = videos.get(dl.dataset.rvdl); download(`${clean(v.title || "video")}.${v.ext || "mp4"}`, v.blob);
-    if (v.plain) setTimeout(() => download(`${clean(v.title || "video")} - polos.${v.ext || "mp4"}`, v.plain), 800); }
+  if (dl) { const v = videos.get(dl.dataset.rvdl), nm = clean(v.title || "video");
+    saveToGallery([{ name: `${nm}.${v.ext || "mp4"}`, blob: v.blob, t: v.t }, ...(v.plain ? [{ name: `${nm} - polos.${v.ext || "mp4"}`, blob: v.plain, t: v.t }] : [])], "Simpan video"); }
   if (del) {
     if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
     const k = del.dataset.rvdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url); if (v && v.purl) URL.revokeObjectURL(v.purl);
@@ -1031,7 +1035,7 @@ function renderVid() {
       <div class="meta"><b>${esc(v.title || "Video")}</b><small>${tgl(v.t)} ${jam(v.t)} · ${fmtDur(v.dur || 0)} · ${(v.blob.size / 1048576).toFixed(1)} MB${v.plain ? ` + polos ${(v.plain.size / 1048576).toFixed(1)} MB` : v.nostamp ? " · polos" : ""}</small>${v.up || v.upPlain ? '<small class="okc">✓ Drive</small>' : ""}</div>
       <div class="acts">${v.plain ? `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah (stamp)</button><button class="btn primary" type="button" data-vshare="${esc(k)}" data-ver="polos">Unggah (polos)</button>`
         : `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah ke Drive</button>`}
-      <button class="btn" type="button" data-vdl="${esc(k)}">Unduh</button>
+      <button class="btn" type="button" data-vdl="${esc(k)}">Simpan ke galeri</button>
       <button class="btn ghost" type="button" data-vdel="${esc(k)}">Hapus</button></div></div>`;
   }).join("");
   // Pilihan isi video laporan
@@ -1054,8 +1058,8 @@ $("vidList").addEventListener("click", e => {
     navigator.share({ files: [f], title: v.title }).then(() => { if (polos) v.upPlain = Date.now(); else v.up = Date.now(); persistVid(k); render(); toast("Video dibagikan. Periksa di Google Drive."); })
       .catch(er => { if (er && er.name !== "AbortError") toast("Gagal membuka menu Bagikan: " + er.message); });
   }
-  if (dl) { const k = dl.dataset.vdl, v = videos.get(k); download(vidName(k), v.blob);
-    if (v.plain) setTimeout(() => download(vidName(k).replace(/(\.\w+)$/, " - polos$1"), v.plain), 800); }
+  if (dl) { const k = dl.dataset.vdl, v = videos.get(k);
+    saveToGallery([{ name: vidName(k), blob: v.blob, t: v.t }, ...(v.plain ? [{ name: vidName(k).replace(/(\.\w+)$/, " - polos$1"), blob: v.plain, t: v.t }] : [])], "Simpan video"); }
   if (del) {
     if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
     const k = del.dataset.vdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url);
@@ -1566,6 +1570,7 @@ $("rSave").addEventListener("click", () => {
   $("review").hidden = true;
   persist(key); render();
   toast(`${labelOf(key)} tersimpan (${Math.round(rec.blob.size / 1024)} KB)`);
+  if (autoGal && !IS_IOS) download(fname(key), rec.blob, true);
   cloudSoon(1500);
 });
 $("rRetake").addEventListener("click", () => { const k = pending ? pending.key : target; closeReview(); openCamera(k); });
@@ -1579,12 +1584,41 @@ function fname(k) {
   const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak);
   return `${tgl(ph.t)} ${jam(ph.t)} - ${clean(p.nama)} - ${a.l}${q.st ? " - " + q.st + "%" : ""}.jpg`;
 }
-function download(filename, blob) {
+/* ---------- Simpan ke galeri HP ----------
+   iPhone/iPad: lewat menu Bagikan → "Simpan Gambar/Video" (masuk ke app Foto); maks. 10 file per kali.
+   Android/komputer: diunduh → tampil di Galeri (album Download). */
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let galQ = null;
+function saveToGallery(items, label) {
+  if (!items.length) return toast("Belum ada file untuk disimpan.");
+  const files = items.map(it => new File([it.blob], it.name, { type: it.blob.type || (/\.mp4$/i.test(it.name) ? "video/mp4" : "image/jpeg"), lastModified: it.t || Date.now() }));
+  if (IS_IOS && navigator.canShare && navigator.canShare({ files: files.slice(0, 1) })) {
+    galQ = { files, i: 0, label }; return galNext();
+  }
+  files.forEach((f, i) => setTimeout(() => download(f.name, f, true), i * 450));
+  toast(files.length > 1 ? `${files.length} file disimpan ke folder Download (tampil di Galeri). Bila diminta, izinkan "unduh banyak file".` : "Disimpan ke folder Download (tampil di Galeri).");
+}
+function galNext() {
+  const q = galQ; if (!q) return;
+  const part = q.files.slice(q.i, q.i + 10), n = Math.ceil(q.files.length / 10), no = q.i / 10 + 1;
+  navigator.share({ files: part, title: q.label || "Simpan ke Foto" }).then(() => {
+    q.i += 10;
+    if (q.i < q.files.length) toast(`Bagian ${no}/${n} tersimpan. Lanjutkan bagian berikutnya.`, `Lanjut ${no + 1}/${n}`, galNext);
+    else { galQ = null; toast("Tersimpan. Cek di app Foto."); }
+  }).catch(e => { if (e && e.name !== "AbortError") toast("Gagal membuka menu: " + e.message); });
+  if (no === 1) toast(`Pilih "Simpan ${part.length} ${/video/.test(part[0].type) ? "Video" : "Gambar"}" di menu yang terbuka.`);
+}
+let autoGal = false;
+try { autoGal = localStorage.getItem("kka-autogal") === "1"; } catch (e) {}
+$("optAutoGal").checked = autoGal;
+$("optAutoGal").addEventListener("change", e => { autoGal = e.target.checked; try { localStorage.setItem("kka-autogal", autoGal ? "1" : "0"); } catch (er) {}
+  toast(autoGal ? (IS_IOS ? "Di iPhone simpan otomatis tidak didukung Safari; pakai tombol Simpan ke galeri." : "Setiap foto/video baru juga disimpan ke Galeri (folder Download).") : "Simpan otomatis ke galeri dimatikan."); });
+function download(filename, blob, quiet) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
-  toast("Diunduh: " + filename);
+  if (!quiet) toast("Diunduh: " + filename);
 }
 
 let vKey = null;
@@ -1596,7 +1630,9 @@ document.addEventListener("keydown", e => {
   $("viewer").hidden = true; $("guide").hidden = true;
   if (!$("review").hidden) closeReview();
 });
-$("vSave").onclick = () => download(fname(vKey), photos.get(vKey).blob);
+$("vSave").onclick = () => { const ph = photos.get(vKey); saveToGallery([{ name: fname(vKey), blob: ph.blob, t: ph.t }], "Simpan foto"); };
+$("galAllBtn").onclick = () => saveToGallery(viewKeys().map(k => ({ name: fname(k), blob: photos.get(k).blob, t: photos.get(k).t })),
+  screen === "kegiatan" ? "Foto kegiatan" : stageName(view));
 $("vShare").onclick = () => shareKeys([vKey], labelOf(vKey));
 $("vDel").onclick = () => {
   const b = $("vDel");

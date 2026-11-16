@@ -52,6 +52,7 @@
       <div class="sum-btns">
         <button class="btn" id="zipBtn" type="button" disabled>ZIP</button>
         <button class="btn primary" id="shareAllBtn" type="button" disabled>Unggah ke Drive</button>
+        <button class="btn" id="galAllBtn" type="button" disabled>Simpan ke galeri</button>
       </div>
     </div>
     <div class="meter"><i id="tBar"></i></div>
@@ -152,6 +153,7 @@
       <div class="restamp"><span id="oldInfo"></span><button class="btn" id="oldBtn2" type="button"></button></div>
       <label class="chk"><input type="checkbox" id="optLive" checked> Kamera dengan arahan langsung</label>
       <label class="chk"><input type="checkbox" id="optGuide" checked> Panduan posisi sebelum memotret</label>
+      <label class="chk"><input type="checkbox" id="optAutoGal"> Simpan otomatis ke galeri HP setiap selesai memotret/merekam <small>(Android; di iPhone pakai tombol Simpan ke galeri)</small></label>
       <ul class="rules" aria-label="Ketentuan foto">
         <li>4 foto wajib: depan, serong kanan 45°, serong kiri 45°, belakang</li>
         <li>Wajib landscape, siang hari</li>
@@ -255,7 +257,7 @@
     <img id="vImg" alt="">
     <div class="vbar">
       <button class="btn primary" id="vShare" type="button">Unggah ke Drive</button>
-      <button class="btn" id="vSave" type="button">Unduh</button>
+      <button class="btn" id="vSave" type="button">Simpan ke galeri</button>
       <button class="btn ghost" id="vDel" type="button">Hapus</button>
       <button class="btn" id="vClose" type="button">Tutup</button>
     </div>
