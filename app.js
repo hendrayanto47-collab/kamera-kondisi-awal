@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.11.0 · 18 Nov 2026";
+const APP_VERSION = "2.11.1 · 18 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -607,13 +607,23 @@ $("kegList").addEventListener("click", e => {
   const rn = e.target.closest("[data-kegren]");
   if (rn) { // ubah judul satu kelompok: kotak isian di kepala kelompok
     const f = rn.dataset.kegren, head = rn.closest(".keghead"), cur = photos.get(kegKeys().find(k => kegFolder(photos.get(k)) === f)).cap || f;
-    head.innerHTML = `<label class="f" style="flex:1;min-width:0;margin:0">Judul baru untuk ${esc(f)}<input type="text" data-renin value="${esc(cur)}" maxlength="80"></label>
+    // pilihan tanggal: bila satu kelompok berisi foto beberapa hari, judul bisa diganti hanya untuk hari tertentu
+    const days = new Map(); kegKeys().filter(k => kegFolder(photos.get(k)) === f).forEach(k => { const d = tgl(photos.get(k).t); days.set(d, (days.get(d) || 0) + 1); });
+    const hari = d => { const [y, m, dd] = d.split("-").map(Number); return new Date(y, m - 1, dd).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short" }); };
+    head.innerHTML = `<label class="f" style="flex:1 1 100%;min-width:0;margin:0">Judul baru untuk ${esc(f)}<input type="text" data-renin value="${esc(cur)}" maxlength="80"></label>
+      ${days.size > 1 ? `<div class="rendays"><small>Ganti judul untuk foto tanggal:</small>${[...days].sort().map(([d, n]) =>
+        `<label class="chk"><input type="checkbox" data-rend="${d}" checked> ${esc(hari(d))} (${n} foto)</label>`).join("")}</div>` : ""}
       <button class="btn primary" type="button" data-renok="${esc(f)}">Simpan judul</button><button class="btn ghost" type="button" data-renx>Batal</button>`;
     const inp = head.querySelector("[data-renin]"); inp.focus(); inp.select(); return;
   }
   if (e.target.closest("[data-renx]")) { render(); return; }
   const ok = e.target.closest("[data-renok]");
-  if (ok) { const v = ok.closest(".keghead").querySelector("[data-renin]").value.trim(); retitleKeg(ok.dataset.renok, v, ok); return; }
+  if (ok) {
+    const head = ok.closest(".keghead"), v = head.querySelector("[data-renin]").value.trim();
+    const boxes = [...head.querySelectorAll("[data-rend]")], days = boxes.length ? boxes.filter(b => b.checked).map(b => b.dataset.rend) : null;
+    if (days && !days.length) return toast("Pilih minimal satu tanggal.");
+    retitleKeg(ok.dataset.renok, v, ok, days); return;
+  }
   const gg = e.target.closest("[data-keggal]");
   if (gg) { const f = gg.dataset.keggal; saveToGallery(kegKeys().filter(k => kegFolder(photos.get(k)) === f).map(phItem), `Kegiatan - ${f}`); }
 });
@@ -1492,9 +1502,9 @@ async function restampOld(btn) {
 }
 /* Ubah judul kegiatan untuk satu kelompok foto: keterangan, cap (dicetak ulang dari foto asli), nama file,
    dan folder Drive (Kegiatan/<judul baru>) ikut berubah. Tanggal & lokasi foto tidak berubah. */
-async function retitleKeg(oldF, newCap, btn) {
+async function retitleKeg(oldF, newCap, btn, days) {
   if (!newCap) return toast("Judul tidak boleh kosong.");
-  const keys = kegKeys().filter(k => kegFolder(photos.get(k)) === oldF);
+  const keys = kegKeys().filter(k => kegFolder(photos.get(k)) === oldF && (!days || days.includes(tgl(photos.get(k).t))));
   if (!keys.length || restamping) return;
   if (newCap === (photos.get(keys[0]).cap || "")) { render(); return; }
   restamping = true; let ok = 0, i = 0;
@@ -1515,7 +1525,7 @@ async function retitleKeg(oldF, newCap, btn) {
       photos.set(k, { ...ph, cap: newCap, gs: false }); persist(k); // cap tidak bisa dicetak ulang: judul tetap diganti
     }
   }
-  restamping = false; $("kegCap").value = newCap; render(); cloudSoon(1500);
+  restamping = false; if (!days) $("kegCap").value = newCap; render(); cloudSoon(1500);
   toast(`Judul ${keys.length} foto diganti menjadi "${newCap}"${ok < keys.length ? ` (${keys.length - ok} tanpa cetak ulang cap)` : ""}. Folder Drive ikut berpindah saat sinkron.`);
 }
 $("oldBtn").addEventListener("click", e => restampOld(e.currentTarget));
