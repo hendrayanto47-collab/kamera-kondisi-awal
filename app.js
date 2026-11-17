@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.9.2 · 17 Nov 2026";
+const APP_VERSION = "2.10.0 · 17 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -89,7 +89,7 @@ const photos = new Map();
 const videos = new Map();
 function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
-  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, gal: v.gal, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
+  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, gal: v.gal, remote: v.remote, size: v.size, sizeP: v.sizeP, hasPlain: v.hasPlain, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
 const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal"];
 function persist(k) {
@@ -863,13 +863,13 @@ function renderRoomVid() {
   $("rvList").innerHTML = paket.map(p => {
     const clips = roomClips(p.id, st), n = clips.length, ok = n >= RV_MIN; if (ok) done++;
     const allUp = n && clips.every(([, v]) => v.up || v.upPlain);
-    const hasP = clips.some(([, v]) => v.plain || v.nostamp), hasS = clips.some(([, v]) => !v.nostamp);
+    const hasP = clips.some(([, v]) => v.plain || v.hasPlain || v.nostamp), hasS = clips.some(([, v]) => !v.nostamp);
     return `<div class="rvroom${ok ? " ok" : ""}">
       <div class="rvhead"><b>${esc(p.nama)}</b><span class="rvcount">${n}/${RV_MIN} video</span>${allUp ? '<small class="okc">✓ Drive</small>' : ""}</div>
       <div class="rvshots">${shotsFor(p).map((x, i) => { const has = clips.some(([, v]) => v.shot === x.id);
         return `<span class="${has ? "on" : ""}">${has ? "✓" : i + 1} ${esc(x.s)}</span>`; }).join("")}</div>
       ${clips.some(([, v]) => !v.shot) ? `<p class="hint rvwarn">Ada video tanpa label sudut. Ketuk nomor videonya lalu pilih <b>Sudut video ini</b> agar tersusun rapi.</p>` : ""}
-      ${n ? `<div class="rvclips">${clips.map(([k, v], i) => `<button type="button" class="rvclip" data-rvplay="${esc(k)}" aria-label="Putar video ${i + 1}">${two(i + 1)}${shotOf(p, v) ? " " + esc(shotOf(p, v).s) : ""}<small>${Math.round(v.dur || 0)} dtk${v.native ? " · 📱" : v.plain ? " · 2v" : v.nostamp ? " · polos" : ""}</small></button>`).join("")}</div>` : ""}
+      ${n ? `<div class="rvclips">${clips.map(([k, v], i) => `<button type="button" class="rvclip" data-rvplay="${esc(k)}" aria-label="Putar video ${i + 1}">${two(i + 1)}${shotOf(p, v) ? " " + esc(shotOf(p, v).s) : ""}<small>${Math.round(v.dur || 0)} dtk${v.native ? " · 📱" : v.plain || v.hasPlain ? " · 2v" : v.nostamp ? " · polos" : ""}${v.remote && !v.blob ? " · ☁" : ""}</small></button>`).join("")}</div>` : ""}
       <div class="acts"><button class="btn${ok ? "" : " primary"}" type="button" data-rvrec="${esc(p.id)}">${n ? "Rekam lagi" : "Rekam 4 video"}</button>
       <button class="btn" type="button" data-rvnat="${esc(p.id)}" title="Pakai aplikasi Kamera bawaan HP: stabil &amp; kualitas terbaik">📱 Kamera HP</button>
       ${hasP && hasS ? `<button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="stamp">Unggah (stamp)</button><button class="btn${ok ? " primary" : ""}" type="button" data-rvshare="${esc(p.id)}" data-ver="polos">Unggah (polos)</button>`
@@ -1046,6 +1046,44 @@ function vidAddress(g) {
   if (!c && navigator.onLine && !vidAddrBusy) { vidAddrBusy = true; KKAGeo.reverse(g.lat, g.lng).finally(() => (vidAddrBusy = false)); }
   return c || profil.wil || "";
 }
+/* ---------- Video dari HP lain: diambil dari Drive saat dibutuhkan ---------- */
+let vidFetching = false;
+async function fetchVids(keys, why) {
+  const miss = keys.filter(k => { const v = videos.get(k); return v && v.remote && !v.blob; });
+  if (!miss.length) return true;
+  if (!window.GD || !GD.valid) { toast("Video ini masih di Drive. Masuk Google dulu (Pengaturan › Sinkron antar-HP) untuk mengambilnya."); return false; }
+  if (vidFetching) { toast("Sedang mengambil video, tunggu sebentar…"); return false; }
+  vidFetching = true; let i = 0;
+  try {
+    for (const k of miss) {
+      const v = videos.get(k); i++;
+      toast(`Mengambil video ${i}/${miss.length} dari Drive… (${(((v.size || 0) + (v.sizeP || 0)) / 1048576).toFixed(1)} MB)`);
+      let blob = await GD.download(v.gid), plain = v.gidP ? await GD.download(v.gidP) : undefined;
+      if (window.KKAFix) { if (await KKAFix.needsFix(blob)) blob = await KKAFix.fix(blob, v.dur); if (plain && await KKAFix.needsFix(plain)) plain = await KKAFix.fix(plain, v.dur); }
+      Object.assign(v, { blob, plain, mime: blob.type || v.mime, remote: undefined, fixed: 1 }); persistVid(k);
+    }
+    render(); toast(why || `${miss.length} video siap.`); return true;
+  } catch (e) { toast("Gagal mengambil video: " + e.message); return false; }
+  finally { vidFetching = false; }
+}
+// Tombol yang butuh isi video: ambil dulu dari Drive. Putar → langsung diputar; bagikan/simpan → ketuk lagi (izin menu Bagikan harus dari ketukan).
+function vidKeysOf(el) {
+  const d = el.dataset;
+  if (d.rvshare) return roomClips(d.rvshare, rvSt()).map(([k]) => k);
+  return [d.rvplay || d.rvdl || d.vshare || d.vdl || d.vfetch].filter(Boolean);
+}
+["rvList", "vidList"].forEach(id => $(id).addEventListener("click", async e => {
+  const el = e.target.closest("[data-rvplay],[data-rvdl],[data-rvshare],[data-vshare],[data-vdl],[data-vfetch]");
+  if (!el) return;
+  const keys = vidKeysOf(el);
+  if (!keys.some(k => { const v = videos.get(k); return v && v.remote && !v.blob; })) return;
+  e.stopImmediatePropagation(); e.preventDefault();
+  const play = el.dataset.rvplay || el.dataset.vfetch;
+  if (await fetchVids(keys, play ? "Video siap." : "Video sudah diambil dari Drive. Ketuk tombolnya sekali lagi.") && el.dataset.rvplay) {
+    const again = $("rvList").querySelector(`[data-rvplay="${CSS.escape(el.dataset.rvplay)}"]`); if (again) again.click();
+  }
+}, true));
+$("cloudVidAll").addEventListener("click", () => fetchVids([...videos.keys()], "Semua video sudah tersimpan di HP ini."));
 function renderVid() {
   renderRoomVid();
   $("vidTitleList").innerHTML = [...STAGES.map(st => `Keliling bangunan – ${stageName(st).toLowerCase()}`), "Kegiatan pekerjaan berlangsung", "Serah terima"]
@@ -1054,10 +1092,12 @@ function renderVid() {
   $("vidList").innerHTML = keys.length ? "" : `<p class="hint empty">Belum ada video. Rekam di lokasi atau buat video laporan dari foto.</p>`;
   $("vidList").innerHTML += keys.map(k => {
     const v = videos.get(k);
-    if (!v.url) v.url = URL.createObjectURL(v.blob);
-    return `<div class="viditem" data-vkey="${esc(k)}"><video src="${v.url}" controls playsinline preload="metadata"></video>
-      <div class="meta"><b>${esc(v.title || "Video")}</b><small>${tgl(v.t)} ${jam(v.t)} · ${fmtDur(v.dur || 0)} · ${(v.blob.size / 1048576).toFixed(1)} MB${v.plain ? ` + polos ${(v.plain.size / 1048576).toFixed(1)} MB` : v.nostamp ? " · polos" : ""}</small>${v.up || v.upPlain ? '<small class="okc">✓ Drive</small>' : ""}</div>
-      <div class="acts">${v.plain ? `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah (stamp)</button><button class="btn primary" type="button" data-vshare="${esc(k)}" data-ver="polos">Unggah (polos)</button>`
+    if (v.blob && !v.url) v.url = URL.createObjectURL(v.blob);
+    const mb = v.blob ? (v.blob.size / 1048576).toFixed(1) : ((v.size || 0) / 1048576).toFixed(1);
+    return `<div class="viditem" data-vkey="${esc(k)}">${v.blob ? `<video src="${v.url}" controls playsinline preload="metadata"></video>`
+      : `<button type="button" class="vidremote" data-vfetch="${esc(k)}">☁ Video ada di Drive<small>Ketuk untuk mengambil (${mb} MB)</small></button>`}
+      <div class="meta"><b>${esc(v.title || "Video")}</b><small>${tgl(v.t)} ${jam(v.t)} · ${fmtDur(v.dur || 0)} · ${mb} MB${v.plain || v.hasPlain ? " + versi polos" : v.nostamp ? " · polos" : ""}</small>${v.up || v.upPlain ? '<small class="okc">✓ Drive</small>' : ""}</div>
+      <div class="acts">${v.plain || v.hasPlain ? `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah (stamp)</button><button class="btn primary" type="button" data-vshare="${esc(k)}" data-ver="polos">Unggah (polos)</button>`
         : `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah ke Drive</button>`}
       <button class="btn" type="button" data-vdl="${esc(k)}">Simpan ke galeri</button>
       <button class="btn ghost" type="button" data-vdel="${esc(k)}">Hapus</button></div></div>`;
@@ -1171,7 +1211,13 @@ $("mkScope").addEventListener("change", updateEstimate);
 $("mkSec").addEventListener("change", updateEstimate);
 $("mkClip").addEventListener("change", updateEstimate);
 $("mkVer").addEventListener("change", updateEstimate);
-$("mkBtn").addEventListener("click", () => {
+$("mkBtn").addEventListener("click", async () => {
+  const scope0 = $("mkScope").value;
+  if (scope0.startsWith("rv")) { // klip dari HP lain diambil dulu dari Drive
+    const sts = scope0 === "rv:all" ? STAGES : [+scope0.split(":")[1]];
+    const need = [...videos.entries()].filter(([, v]) => v.room && sts.includes(v.st) && !v.skip).map(([k]) => k);
+    if (!(await fetchVids(need, "Video ruangan siap. Membuat video utuh…"))) return;
+  }
   const scope = $("mkScope").value, sc = reportScenes(scope, +$("mkSec").value);
   const label = scope === "rv:all" ? "Video utuh – perjalanan 0% → 100% (medsos)" : scope.startsWith("rv:") ? `Video utuh – ruangan ${stageName(+scope.split(":")[1]).toLowerCase()} (medsos)`
     : scope === "cmp" ? "Video laporan – perbandingan 0% → 100%" : scope === "keg" ? "Video laporan – kegiatan" : `Video laporan – ${stageName(+scope).toLowerCase()}`;
@@ -1905,12 +1951,10 @@ async function cloudSync(manual) {
           else if (loc.gs && !loc.metaDirty && (a.shot || "") !== (loc.shot || "")) { loc.shot = a.shot || undefined; persistVid(k); }
           return;
         }
-        cloudProg = `Mengambil video dari HP lain… ${down + 1}/${pullTotal} (video lebih lama)`; renderCloud();
-        let blob = await GD.download(f.id);
-        let plain = e.plain ? await GD.download(e.plain.id) : undefined;
-        if (window.KKAFix) { if (await KKAFix.needsFix(blob)) blob = await KKAFix.fix(blob, +a.dur); if (plain && await KKAFix.needsFix(plain)) plain = await KKAFix.fix(plain, +a.dur); }
-        videos.set(k, { blob, plain, nostamp: a.ns === "1" || undefined, t: +a.t || Date.now(), dur: +a.dur || 0, title: a.title || "Video",
-          mime: blob.type, ext: a.ext || "mp4", room: a.room || undefined, shot: a.shot || undefined, native: a.nat === "1" || undefined, st: a.st !== undefined && a.st !== "" ? +a.st : undefined,
+        // Video TIDAK diunduh di sini (besar): cukup datanya; isi video diambil saat diputar/dibagikan/dipakai (lihat fetchVids)
+        videos.set(k, { blob: undefined, remote: true, size: +f.size || 0, sizeP: e.plain ? +e.plain.size || 0 : 0, hasPlain: !!e.plain,
+          nostamp: a.ns === "1" || undefined, t: +a.t || Date.now(), dur: +a.dur || 0, title: a.title || "Video",
+          mime: f.mimeType || "video/mp4", ext: a.ext || "mp4", room: a.room || undefined, shot: a.shot || undefined, native: a.nat === "1" || undefined, st: a.st !== undefined && a.st !== "" ? +a.st : undefined,
           gid: f.id, gidP: e.plain ? e.plain.id : undefined, gs: true, fixed: 1 });
         persistVid(k); down++; paint();
       }
@@ -2036,6 +2080,9 @@ function renderCloud() {
   $("cloudRelogin").hidden = GD.valid;
   $("cloudSyncBtn").hidden = !GD.valid; $("cloudSyncBtn").disabled = cloudBusy;
   $("cloudSwitch").hidden = !GD.valid;
+  { const rem = [...videos.values()].filter(v => v.remote && !v.blob);
+    $("cloudVidAll").hidden = !GD.valid || !rem.length;
+    $("cloudVidAll").textContent = `Ambil semua video ke HP ini (${rem.length} · ${(rem.reduce((a, v) => a + (v.size || 0) + (v.sizeP || 0), 0) / 1048576).toFixed(0)} MB)`; }
   // pilihan folder untuk tautan portal
   const sel = $("cloudFolder"), prev = sel.value;
   sel.innerHTML = STAGES.flatMap(st => [`FOTO_REVITSD_${st}`, `VIDEO_REVITSD_${st}`, `VIDEO_REVITSD_${st} (polos)`])
@@ -2144,7 +2191,7 @@ async function repairVideos() {
   if (!window.KKAFix) return;
   let n = 0;
   for (const [k, v] of [...videos]) {
-    if (v.fixed) continue;
+    if (v.fixed || !v.blob) continue;
     try {
       if (await KKAFix.needsFix(v.blob)) { v.blob = await KKAFix.fix(v.blob, v.dur); if (v.url) { URL.revokeObjectURL(v.url); v.url = null; } n++; if (v.gid) v.reup = true; }
       if (v.plain && await KKAFix.needsFix(v.plain)) { v.plain = await KKAFix.fix(v.plain, v.dur); if (v.purl) { URL.revokeObjectURL(v.purl); v.purl = null; } if (v.gidP) v.reup = true; }
