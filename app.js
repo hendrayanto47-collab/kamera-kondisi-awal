@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.9.1 · 17 Nov 2026";
+const APP_VERSION = "2.9.2 · 17 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -89,9 +89,9 @@ const photos = new Map();
 const videos = new Map();
 function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
-  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
+  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, gal: v.gal, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -524,6 +524,7 @@ function renderPaket(st) {
             ${ph ? `<img src="${ph.url}" alt="">` : ref ? `<img src="${ref.url}" alt=""><span class="reflbl">acuan 0%</span>` : SVG[a.k]}
             <span class="cam">${ph ? "Lihat" : "Ambil foto"}</span>
             ${ph && cloudOn() ? `<span class="sync${ph.gs ? " ok" : ""}">${ph.gs ? "☁ Drive" : "Antre"}</span>` : ""}
+            ${ph && ph.gal ? `<span class="galmark" title="Sudah disimpan ke galeri">📥 Galeri</span>` : ""}
             ${ph && ph.warn && ph.warn.length ? `<span class="warnb" title="${esc(ph.warn.join(" "))}">${ph.warn.length} catatan</span>` : ""}</button>
           <div class="slab"><span>${a.l}</span><span class="slab-acts">${ph
             ? `<button type="button" data-retake="${esc(k)}">Ulangi</button>`
@@ -563,7 +564,7 @@ function renderKeg() {
     <div class="keggrid">${ks.map(k => {
     const ph = photos.get(k);
     return `<figure class="kegitem"><button type="button" class="shot has" data-view-k="${esc(k)}" aria-label="Lihat ${esc(ph.cap || "foto kegiatan")}">
-      <img src="${ph.url}" alt="">${ph.up || ph.gs ? '<span class="sync ok">✓ Drive</span>' : ""}</button>
+      <img src="${ph.url}" alt="">${ph.up || ph.gs ? '<span class="sync ok">✓ Drive</span>' : ""}${ph.gal ? '<span class="galmark">📥 Galeri</span>' : ""}</button>
       <figcaption><small>${tgl(ph.t)} ${jam(ph.t)}${ph.away ? " · 📍 luar sekolah" : ""}</small></figcaption></figure>`;
   }).join("")}</div></section>`).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
@@ -603,7 +604,7 @@ $("kegList").addEventListener("click", e => {
   const sh = e.target.closest("[data-kegshare]");
   if (sh) { const f = sh.dataset.kegshare; shareKeys(kegKeys().filter(k => kegFolder(photos.get(k)) === f), `Kegiatan - ${f}`); }
   const gg = e.target.closest("[data-keggal]");
-  if (gg) { const f = gg.dataset.keggal; saveToGallery(kegKeys().filter(k => kegFolder(photos.get(k)) === f).map(k => ({ name: fname(k), blob: photos.get(k).blob, t: photos.get(k).t })), `Kegiatan - ${f}`); }
+  if (gg) { const f = gg.dataset.keggal; saveToGallery(kegKeys().filter(k => kegFolder(photos.get(k)) === f).map(phItem), `Kegiatan - ${f}`); }
 });
 
 // ---------- Aksi pada daftar ----------
@@ -813,7 +814,7 @@ $("vidAudio").addEventListener("change", e => { vidAudio = e.target.checked; try
 function saveVideo(v, msg) {
   const k = "#vid|" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   v.gs = false; v.fixed = 1; videos.set(k, v); persistVid(k); render(); cloudSoon();
-  if (autoGal && !IS_IOS) download(v.room ? `${clean(v.title || "video")}.${v.ext || "mp4"}` : `${clean(v.title || "video")} ${tgl(v.t)}.${v.ext || "mp4"}`, v.blob, true);
+  if (autoGal && !IS_IOS) { download(v.room ? `${clean(v.title || "video")}.${v.ext || "mp4"}` : `${clean(v.title || "video")} ${tgl(v.t)}.${v.ext || "mp4"}`, v.blob, true); v.gal = Date.now(); persistVid(k); }
   toast(msg || `Video tersimpan (${fmtDur(v.dur || 0)}, ${(v.blob.size / 1048576).toFixed(1)} MB).`);
   return k;
 }
@@ -1031,7 +1032,7 @@ $("rvList").addEventListener("click", e => {
     box.querySelectorAll("[data-rvver]").forEach(b => b.classList.toggle("on", b === vb)); }
   const dl = e.target.closest("[data-rvdl]"), del = e.target.closest("[data-rvdel]");
   if (dl) { const v = videos.get(dl.dataset.rvdl), nm = clean(v.title || "video");
-    saveToGallery([{ name: `${nm}.${v.ext || "mp4"}`, blob: v.blob, t: v.t }, ...(v.plain ? [{ name: `${nm} - polos.${v.ext || "mp4"}`, blob: v.plain, t: v.t }] : [])], "Simpan video"); }
+    saveToGallery(vidItems(dl.dataset.rvdl, `${nm}.${v.ext || "mp4"}`), "Simpan video"); }
   if (del) {
     if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
     const k = del.dataset.rvdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url); if (v && v.purl) URL.revokeObjectURL(v.purl);
@@ -1082,7 +1083,7 @@ $("vidList").addEventListener("click", e => {
       .catch(er => { if (er && er.name !== "AbortError") toast("Gagal membuka menu Bagikan: " + er.message); });
   }
   if (dl) { const k = dl.dataset.vdl, v = videos.get(k);
-    saveToGallery([{ name: vidName(k), blob: v.blob, t: v.t }, ...(v.plain ? [{ name: vidName(k).replace(/(\.\w+)$/, " - polos$1"), blob: v.plain, t: v.t }] : [])], "Simpan video"); }
+    saveToGallery(vidItems(k, vidName(k)), "Simpan video"); }
   if (del) {
     if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = "Yakin hapus?"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Hapus"; } }, 3000); return; }
     const k = del.dataset.vdel, v = videos.get(k); if (v && v.url) URL.revokeObjectURL(v.url);
@@ -1342,7 +1343,7 @@ $("fixBtn").addEventListener("click", async () => {
       const res = await stamp(img, ph.t, { ...sk, acc: null, src: "sekolah" }, c.p, c.a, { ...c.opts, cover: !ph.orig });
       URL.revokeObjectURL(ph.url);
       const warn = (ph.warn || []).filter(w => !/GPS|koordinat/i.test(w)).concat("GPS HP tidak tersedia saat memotret; dicetak koordinat sekolah.");
-      photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: sk.lat, lng: sk.lng, acc: null, warn,
+      photos.set(k, { ...ph, gal: undefined, blob: res.blob, sv: res.sv, lat: sk.lat, lng: sk.lng, acc: null, warn,
         synced: false, gs: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
       persist(k); ok++;
     } catch (e) {}
@@ -1383,7 +1384,7 @@ $("locBtn").addEventListener("click", async e => {
       const res = await stamp(img, ph.t, { ...sk, acc: null, src: "sekolah" }, c.p, c.a, { ...c.opts, cover: !ph.orig });
       URL.revokeObjectURL(ph.url);
       const warn = (ph.warn || []).filter(w => !/GPS|koordinat|Lokasi/i.test(w)).concat(ph.acc == null ? "Lokasi diperbaiki dengan koordinat sekolah yang benar." : "Lokasi HP saat memotret tidak akurat; diperbaiki dengan koordinat sekolah.");
-      photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: sk.lat, lng: sk.lng, acc: null, warn, up: undefined,
+      photos.set(k, { ...ph, gal: undefined, blob: res.blob, sv: res.sv, lat: sk.lat, lng: sk.lng, acc: null, warn, up: undefined,
         synced: false, gs: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
       persist(k); ok++;
     } catch (er) {}
@@ -1423,7 +1424,7 @@ async function restampOld(btn) {
       const img = await createImageBitmap(ph.orig || ph.blob);
       const res = await stamp(img, ph.t, gps, c.p, c.a, { ...c.opts, cover: !ph.orig });
       URL.revokeObjectURL(ph.url);
-      photos.set(k, { ...ph, blob: res.blob, sv: res.sv, lat: gps.lat, lng: gps.lng, acc: gps.acc, up: undefined,
+      photos.set(k, { ...ph, gal: undefined, blob: res.blob, sv: res.sv, lat: gps.lat, lng: gps.lng, acc: gps.acc, up: undefined,
         synced: false, gs: false, prevPath: ph.synced ? ph.path : ph.prevPath, url: URL.createObjectURL(res.blob) });
       persist(k); ok++;
     } catch (e) {}
@@ -1622,7 +1623,7 @@ $("rSave").addEventListener("click", () => {
   $("review").hidden = true;
   persist(key); render();
   toast(`${labelOf(key)} tersimpan (${Math.round(rec.blob.size / 1024)} KB)`);
-  if (autoGal && !IS_IOS) download(fname(key), rec.blob, true);
+  if (autoGal && !IS_IOS) { download(fname(key), rec.blob, true); photos.get(key).gal = Date.now(); persist(key); }
   cloudSoon(1500);
 });
 $("rRetake").addEventListener("click", () => { const k = pending ? pending.key : target; closeReview(); openCamera(k); });
@@ -1641,22 +1642,43 @@ function fname(k) {
    Android/komputer: diunduh → tampil di Galeri (album Download). */
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 let galQ = null;
-function saveToGallery(items, label) {
-  if (!items.length) return toast("Belum ada file untuk disimpan.");
+// Item galeri membawa rujukan rekaman agar yang sudah pernah disimpan tidak tersimpan dua kali
+const phItem = k => { const ph = photos.get(k); return { name: fname(k), blob: ph.blob, t: ph.t, ref: { kind: "p", k } }; };
+const vidItems = (k, name) => { const v = videos.get(k);
+  return [{ name, blob: v.blob, t: v.t, ref: { kind: "v", k } }, ...(v.plain ? [{ name: name.replace(/(\.\w+)$/, " - polos$1"), blob: v.plain, t: v.t, ref: { kind: "v", k } }] : [])]; };
+const recOf = r => (r.kind === "p" ? photos.get(r.k) : videos.get(r.k));
+function markGal(items) {
+  const now = Date.now(), done = new Set();
+  for (const it of items) { if (!it.ref) continue; const id = it.ref.kind + it.ref.k; if (done.has(id)) continue; done.add(id);
+    const r = recOf(it.ref); if (!r) continue; r.gal = now; it.ref.kind === "p" ? persist(it.ref.k) : persistVid(it.ref.k); }
+  render();
+}
+function saveToGallery(all, label, force) {
+  if (!all.length) return toast("Belum ada file untuk disimpan.");
+  const items = force ? all : all.filter(it => !(it.ref && (recOf(it.ref) || {}).gal));
+  const skipped = all.length - items.length;
+  if (!items.length) {
+    const r = all[0].ref && recOf(all[0].ref);
+    return toast(all.length === 1 && r ? `Sudah pernah disimpan ke galeri (${tgl(r.gal)} ${jam(r.gal)}).` : `Semua (${all.length}) sudah pernah disimpan ke galeri.`,
+      "Simpan ulang", () => saveToGallery(all, label, true));
+  }
   const files = items.map(it => new File([it.blob], it.name, { type: it.blob.type || (/\.mp4$/i.test(it.name) ? "video/mp4" : "image/jpeg"), lastModified: it.t || Date.now() }));
+  const note = skipped ? ` ${skipped} yang sudah pernah disimpan dilewati.` : "";
   if (IS_IOS && navigator.canShare && navigator.canShare({ files: files.slice(0, 1) })) {
-    galQ = { files, i: 0, label }; return galNext();
+    galQ = { files, items, i: 0, label, note }; return galNext();
   }
   files.forEach((f, i) => setTimeout(() => download(f.name, f, true), i * 450));
-  toast(files.length > 1 ? `${files.length} file disimpan ke folder Download (tampil di Galeri). Bila diminta, izinkan "unduh banyak file".` : "Disimpan ke folder Download (tampil di Galeri).");
+  markGal(items);
+  toast((files.length > 1 ? `${files.length} file disimpan ke folder Download (tampil di Galeri). Bila diminta, izinkan "unduh banyak file".` : "Disimpan ke folder Download (tampil di Galeri).") + note);
 }
 function galNext() {
   const q = galQ; if (!q) return;
   const part = q.files.slice(q.i, q.i + 10), n = Math.ceil(q.files.length / 10), no = q.i / 10 + 1;
   navigator.share({ files: part, title: q.label || "Simpan ke Foto" }).then(() => {
+    markGal(q.items.slice(q.i, q.i + 10));
     q.i += 10;
     if (q.i < q.files.length) toast(`Bagian ${no}/${n} tersimpan. Lanjutkan bagian berikutnya.`, `Lanjut ${no + 1}/${n}`, galNext);
-    else { galQ = null; toast("Tersimpan. Cek di app Foto."); }
+    else { galQ = null; toast("Tersimpan. Cek di app Foto." + (q.note || "")); }
   }).catch(e => { if (e && e.name !== "AbortError") toast("Gagal membuka menu: " + e.message); });
   if (no === 1) toast(`Pilih "Simpan ${part.length} ${/video/.test(part[0].type) ? "Video" : "Gambar"}" di menu yang terbuka.`);
 }
@@ -1682,8 +1704,8 @@ document.addEventListener("keydown", e => {
   $("viewer").hidden = true; $("guide").hidden = true;
   if (!$("review").hidden) closeReview();
 });
-$("vSave").onclick = () => { const ph = photos.get(vKey); saveToGallery([{ name: fname(vKey), blob: ph.blob, t: ph.t }], "Simpan foto"); };
-$("galAllBtn").onclick = () => saveToGallery(viewKeys().map(k => ({ name: fname(k), blob: photos.get(k).blob, t: photos.get(k).t })),
+$("vSave").onclick = () => saveToGallery([phItem(vKey)], "Simpan foto");
+$("galAllBtn").onclick = () => saveToGallery(viewKeys().map(phItem),
   screen === "kegiatan" ? "Foto kegiatan" : stageName(view));
 $("vShare").onclick = () => shareKeys([vKey], labelOf(vKey));
 $("vDel").onclick = () => {
