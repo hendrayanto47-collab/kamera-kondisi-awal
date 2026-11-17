@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.10.1 · 17 Nov 2026";
+const APP_VERSION = "2.11.0 · 18 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -560,7 +560,8 @@ function renderKeg() {
   $("kegList").innerHTML = keys.length ? kegGroups(keys).map(([f, ks]) => `<section class="keggroup">
     <div class="keghead"><b>📁 ${esc(f)}</b><small>${ks.length} foto</small>
       <button class="btn" type="button" data-kegshare="${esc(f)}">Unggah ke Drive</button>
-      <button class="btn" type="button" data-keggal="${esc(f)}">Simpan ke galeri</button></div>
+      <button class="btn" type="button" data-keggal="${esc(f)}">Simpan ke galeri</button>
+      <button class="btn ghost" type="button" data-kegren="${esc(f)}">✏️ Ubah judul</button></div>
     <div class="keggrid">${ks.map(k => {
     const ph = photos.get(k);
     return `<figure class="kegitem"><button type="button" class="shot has" data-view-k="${esc(k)}" aria-label="Lihat ${esc(ph.cap || "foto kegiatan")}">
@@ -603,6 +604,16 @@ $("kegList").addEventListener("click", e => {
   const b = e.target.closest("[data-view-k]"); if (b) openViewer(b.dataset.viewK);
   const sh = e.target.closest("[data-kegshare]");
   if (sh) { const f = sh.dataset.kegshare; shareKeys(kegKeys().filter(k => kegFolder(photos.get(k)) === f), `Kegiatan - ${f}`); }
+  const rn = e.target.closest("[data-kegren]");
+  if (rn) { // ubah judul satu kelompok: kotak isian di kepala kelompok
+    const f = rn.dataset.kegren, head = rn.closest(".keghead"), cur = photos.get(kegKeys().find(k => kegFolder(photos.get(k)) === f)).cap || f;
+    head.innerHTML = `<label class="f" style="flex:1;min-width:0;margin:0">Judul baru untuk ${esc(f)}<input type="text" data-renin value="${esc(cur)}" maxlength="80"></label>
+      <button class="btn primary" type="button" data-renok="${esc(f)}">Simpan judul</button><button class="btn ghost" type="button" data-renx>Batal</button>`;
+    const inp = head.querySelector("[data-renin]"); inp.focus(); inp.select(); return;
+  }
+  if (e.target.closest("[data-renx]")) { render(); return; }
+  const ok = e.target.closest("[data-renok]");
+  if (ok) { const v = ok.closest(".keghead").querySelector("[data-renin]").value.trim(); retitleKeg(ok.dataset.renok, v, ok); return; }
   const gg = e.target.closest("[data-keggal]");
   if (gg) { const f = gg.dataset.keggal; saveToGallery(kegKeys().filter(k => kegFolder(photos.get(k)) === f).map(phItem), `Kegiatan - ${f}`); }
 });
@@ -1479,6 +1490,34 @@ async function restampOld(btn) {
   restamping = false; render();
   toast(`${ok} foto diperbarui ke cap terbaru. Unggah ulang ke Drive bila sebelumnya sudah terkirim.`); cloudSoon(1500);
 }
+/* Ubah judul kegiatan untuk satu kelompok foto: keterangan, cap (dicetak ulang dari foto asli), nama file,
+   dan folder Drive (Kegiatan/<judul baru>) ikut berubah. Tanggal & lokasi foto tidak berubah. */
+async function retitleKeg(oldF, newCap, btn) {
+  if (!newCap) return toast("Judul tidak boleh kosong.");
+  const keys = kegKeys().filter(k => kegFolder(photos.get(k)) === oldF);
+  if (!keys.length || restamping) return;
+  if (newCap === (photos.get(keys[0]).cap || "")) { render(); return; }
+  restamping = true; let ok = 0, i = 0;
+  for (const k of keys) {
+    i++; if (btn) btn.textContent = `Memperbarui ${i}/${keys.length}…`;
+    const ph = photos.get(k), c = stampCtx(k, newCap);
+    const sk = schoolKoor();
+    const gps = ph.lat != null ? { lat: ph.lat, lng: ph.lng, acc: ph.acc ?? null, src: ph.acc == null ? (ph.away ? "foto" : "sekolah") : "gps" }
+      : ph.away ? null : sk ? { ...sk, acc: null, src: "sekolah" } : null;
+    try {
+      const img = await createImageBitmap(ph.orig || ph.blob);
+      const res = await stamp(img, ph.t, gps, c.p, c.a, { ...c.opts, cover: !ph.orig });
+      URL.revokeObjectURL(ph.url);
+      photos.set(k, { ...ph, cap: newCap, gal: undefined, blob: res.blob, sv: res.sv, up: undefined,
+        synced: false, gs: false, url: URL.createObjectURL(res.blob) });
+      persist(k); ok++;
+    } catch (e) {
+      photos.set(k, { ...ph, cap: newCap, gs: false }); persist(k); // cap tidak bisa dicetak ulang: judul tetap diganti
+    }
+  }
+  restamping = false; $("kegCap").value = newCap; render(); cloudSoon(1500);
+  toast(`Judul ${keys.length} foto diganti menjadi "${newCap}"${ok < keys.length ? ` (${keys.length - ok} tanpa cetak ulang cap)` : ""}. Folder Drive ikut berpindah saat sinkron.`);
+}
 $("oldBtn").addEventListener("click", e => restampOld(e.currentTarget));
 $("oldBtn2").addEventListener("click", e => restampOld(e.currentTarget));
 
@@ -2000,7 +2039,7 @@ async function cloudSync(manual) {
     for (const [k, ph] of [...photos]) {
       if (ph.gs && ph.gid && k.startsWith("#keg|") && ph.gpath !== `Kegiatan/${kegFolder(ph)}`) { // pindahkan ke folder judulnya
         jobs.push({ rank: 1, run: async () => { const path = `Kegiatan/${kegFolder(ph)}`;
-          try { await GD.move(ph.gid, await F(path)); } catch (e) { if (e.status !== 404) throw e; }
+          try { const mv = await GD.move(ph.gid, await F(path)); if (mv && mv.modifiedTime) ph.gmod = mv.modifiedTime; } catch (e) { if (e.status !== 404) throw e; }
           ph.gpath = path; persist(k); } });
         continue;
       }
@@ -2016,7 +2055,13 @@ async function cloudSync(manual) {
       const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90), gp: path.slice(0, 100), aw: ph.away ? "1" : "" };
       const meta = { name: fname(k), appProperties: props };
       let r = null;
-      if (ph.gid) { try { r = await GD.put(ph.blob, meta, ph.gid); } catch (e) { if (e.status !== 404) throw e; } }
+      if (ph.gid) {
+        try {
+          r = await GD.put(ph.blob, meta, ph.gid);
+          if (ph.gpath && ph.gpath !== path) { // judul/ruang berubah: pindah folder
+            const mv = await GD.move(ph.gid, await F(path)); if (mv && mv.modifiedTime) r.modifiedTime = mv.modifiedTime; }
+        } catch (e) { if (e.status !== 404) throw e; }
+      }
       if (!r) r = await GD.put(ph.blob, { ...meta, parents: [await F(path)], mimeType: "image/jpeg" });
       const cur = photos.get(k);
       if (cur === ph) { ph.gid = r.id; ph.gmod = r.modifiedTime; ph.gs = true; ph.gpath = path; persist(k); }
