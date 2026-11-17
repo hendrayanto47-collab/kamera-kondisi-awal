@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.11.1 · 18 Nov 2026";
+const APP_VERSION = "2.12.0 · 18 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -556,7 +556,7 @@ function kegGroups(keys) {
 }
 function renderKeg() {
   const keys = kegKeys();
-  renderKegChips(); renderKegLoc();
+  renderKegChips(); renderKegLoc(); renderKegDay();
   $("kegList").innerHTML = keys.length ? kegGroups(keys).map(([f, ks]) => `<section class="keggroup">
     <div class="keghead"><b>📁 ${esc(f)}</b><small>${ks.length} foto</small>
       <button class="btn" type="button" data-kegshare="${esc(f)}">Unggah ke Drive</button>
@@ -574,6 +574,52 @@ function renderKeg() {
   $("dockMsg").textContent = keys.length ? `${keys.length} foto kegiatan. Ketuk Unggah ke Drive untuk mengirim semuanya.`
     : "Foto kegiatan: rapat, pekerjaan berlangsung, material datang, serah terima.";
 }
+/* ---------- Nomor hari pekerjaan (H1, H2, …) otomatis dari tanggal mulai ---------- */
+const H_RE = /^H\s?(\d+)\s+(.+)$/i;
+const dayStart = ms => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
+function hNum(ms) {
+  if (!profil.kegStart) return null;
+  const [y, m, d] = profil.kegStart.split("-").map(Number);
+  const n = Math.round((dayStart(ms) - new Date(y, m - 1, d).getTime()) / 86400000) + 1;
+  return n >= 1 ? n : null;
+}
+const withH = (cap, ms) => { const n = hNum(ms); if (!n) return cap; const mm = cap.match(H_RE); return `H${n} ${mm ? mm[2] : cap}`; };
+// Foto berjudul "H<angka> …" yang angkanya tidak cocok dengan tanggal fotonya
+function hFixes() {
+  const out = new Map(); // "folderLama|tanggal" -> {f, day, cap, n}
+  if (!profil.kegStart) return out;
+  for (const k of kegKeys()) {
+    const ph = photos.get(k), mm = (ph.cap || "").match(H_RE); if (!mm) continue;
+    const want = withH(ph.cap, ph.t); if (want === ph.cap) continue;
+    const key = kegFolder(ph) + "|" + tgl(ph.t), e = out.get(key) || { f: kegFolder(ph), day: tgl(ph.t), cap: want, n: 0 };
+    e.n++; out.set(key, e);
+  }
+  return out;
+}
+function renderKegDay() {
+  $("kegStart").value = profil.kegStart || "";
+  const n = hNum(Date.now());
+  $("kegHInfo").textContent = profil.kegStart
+    ? (n ? `Hari ini = H${n}. Ketuk kegiatan di atas: nomor H otomatis ditambahkan.` : "Tanggal mulai ada di masa depan.")
+    : "Isi tanggal mulai pekerjaan agar nomor hari (H1, H2, …) dihitung otomatis.";
+  const fx = hFixes(), cnt = [...fx.values()].reduce((a, e) => a + e.n, 0);
+  $("kegRenum").hidden = !cnt;
+  $("kegRenum").textContent = `Sesuaikan nomor H: ${cnt} foto tidak cocok dengan tanggalnya`;
+}
+$("kegStart").addEventListener("change", e => {
+  profil.kegStart = e.target.value || undefined; saveState(); renderKegDay(); renderKegChips();
+  const n = hNum(Date.now()); if (n) toast(`Hari ini H${n}.`);
+});
+$("kegRenum").addEventListener("click", async e => {
+  const b = e.currentTarget, fx = [...hFixes().values()];
+  if (!fx.length) return;
+  if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = `Ketuk lagi: ubah ${fx.map(x => `${x.f} (${x.day.slice(8)}/${x.day.slice(5, 7)}) → ${x.cap}`).join("; ")}`;
+    setTimeout(() => { delete b.dataset.armed; renderKegDay(); }, 8000); return; }
+  delete b.dataset.armed; b.disabled = true;
+  for (const x of fx) await retitleKeg(x.f, x.cap, b, [x.day]);
+  b.disabled = false; renderKegDay(); toast("Nomor H semua foto kegiatan sudah disesuaikan dengan tanggalnya.");
+});
+
 /* Pilihan kegiatan siap ketuk: judul yang pernah dipakai (terbaru dulu) + daftar kegiatan umum revitalisasi */
 function renderKegChips() {
   const used = [], seen = new Set();
@@ -588,8 +634,8 @@ function renderKegChips() {
 }
 $("kegChips").addEventListener("click", e => {
   const b = e.target.closest("[data-kcap]"); if (!b) return;
-  $("kegCap").value = b.dataset.kcap; renderKegChips();
-  toast(`Kegiatan: ${b.dataset.kcap}. Ketuk Ambil foto atau Pilih dari galeri. Judul bisa diubah, mis. ditambah "H2".`);
+  $("kegCap").value = withH(b.dataset.kcap, Date.now()); renderKegChips();
+  toast(`Kegiatan: ${$("kegCap").value}. Ketuk Ambil foto atau Pilih dari galeri.`);
 });
 $("kegCap").addEventListener("input", () => {
   const cur = $("kegCap").value.trim().toLowerCase();
@@ -1622,16 +1668,17 @@ $("galMulti").addEventListener("change", async e => {
       const key = "#keg|" + Date.now().toString(36) + i;
       const img = await loadImage(f), info = KKA.analyze(img);
       const ex = await readExif(f), takenAt = ex && ex.t ? ex.t : takenTime(f), gps = galGps(ex, kegAway);
-      const c = stampCtx(key, cap, kegAway);
+      const capF = H_RE.test(cap) ? withH(cap, takenAt) : cap; // foto galeri dari hari lain: nomor H mengikuti tanggal fotonya
+      const c = stampCtx(key, capF, kegAway);
       const others = [...photos.entries()].filter(([k]) => k.startsWith("#keg|")).map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
       const checks = KKA.runChecks({ info, takenAt, gps, others, allowPortrait: true });
       const res = await stamp(img, takenAt, gps, c.p, c.a, c.opts);
-      photos.set(key, { ...res, hash: info.hash, warn: checks.filter(x => !x.ok && !/dari galeri/.test(x.text)).map(x => x.text), cap, away: kegAway || undefined, synced: false, gs: false, url: URL.createObjectURL(res.blob) });
+      photos.set(key, { ...res, hash: info.hash, warn: checks.filter(x => !x.ok && !/dari galeri/.test(x.text)).map(x => x.text), cap: capF, away: kegAway || undefined, synced: false, gs: false, url: URL.createObjectURL(res.blob) });
       persist(key); ok++;
     } catch (err) { fail++; }
   }
   render(); cloudSoon(1500);
-  toast(`${ok} foto kegiatan "${cap}" ditambahkan${fail ? `, ${fail} gagal dibaca (pakai JPG/PNG)` : ""}.`);
+  toast(`${ok} foto kegiatan ditambahkan ke "${cap}"${fail ? `, ${fail} gagal dibaca (pakai JPG/PNG)` : ""}.`);
 });
 $("kegGal").addEventListener("click", () => {
   const cap = $("kegCap").value.trim();

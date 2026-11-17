@@ -71,6 +71,11 @@
       <label class="f">Keterangan kegiatan<input type="text" id="kegCap" list="kegCapList" placeholder="Pilih atau ketik, mis. Pekerjaan atap" autocomplete="off"></label>
       <datalist id="kegCapList"></datalist>
       <div class="kegchips" id="kegChips" aria-label="Pilih kegiatan"></div>
+      <div class="kegday">
+        <label class="f">Hari pertama pekerjaan (H1)<input type="date" id="kegStart"></label>
+        <p class="hint" id="kegHInfo"></p>
+        <button class="btn" id="kegRenum" type="button" hidden>Sesuaikan nomor H</button>
+      </div>
       <div class="kegloc"><small>Lokasi kegiatan</small>
         <div class="seg" role="group" aria-label="Lokasi kegiatan"><button type="button" id="kegAtSchool" class="on">🏫 Di sekolah</button><button type="button" id="kegAway">📍 Di luar sekolah</button></div>
         <p class="hint" id="kegLocHint"></p></div>
