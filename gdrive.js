@@ -25,7 +25,7 @@
     let st = null; try { st = sessionStorage.getItem("kka-gstate"); sessionStorage.removeItem("kka-gstate"); } catch (e) {}
     history.replaceState(null, "", location.pathname + location.search);
     if (!st || q.get("state") !== st) return; // tolak respons yang bukan permintaan kita
-    tok = { access: q.get("access_token"), exp: Date.now() + (+q.get("expires_in") || 3600) * 1000 - 60000, email: (tok && tok.email) || "" };
+    tok = { access: q.get("access_token"), exp: Date.now() + (+q.get("expires_in") || 3600) * 1000 - 60000, email: "", hint: (tok && (tok.email || tok.hint)) || "" }; // email diperiksa ulang (bisa saja akun lain yang dipilih)
     saveTok();
     GDjustLoggedIn = true;
   })();
@@ -41,8 +41,8 @@
     const st = Math.random().toString(36).slice(2) + Date.now().toString(36);
     try { sessionStorage.setItem("kka-gstate", st); } catch (e) {}
     const p = new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: redirectUri(), response_type: "token", scope: SCOPE,
-      include_granted_scopes: "true", state: st, prompt: !force && tok && tok.email ? "none" : "select_account" });
-    if (tok && tok.email) p.set("login_hint", tok.email);
+      include_granted_scopes: "true", state: st, prompt: !force && tok && (tok.email || tok.hint) ? "none" : "select_account" });
+    const hint = tok && (tok.email || tok.hint); if (hint) p.set("login_hint", hint);
     location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + p;
   }
   function logout() {
@@ -129,6 +129,8 @@
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta || {}) });
   }
   const patch = (id, meta) => req(`${API}/files/${id}?fields=id,modifiedTime`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta) });
+  // Status satu file: { trashed } — 404 berarti file bukan milik akun ini / sudah dihapus permanen
+  const stat = id => req(`${API}/files/${id}?fields=id,trashed`);
   const download = id => req(`${API}/files/${id}?alt=media`, {}, true).then(r => r.blob());
   const trash = id => req(`${API}/files/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: '{"trashed":true}' })
     .catch(e => { if (e.status !== 404) throw e; });
@@ -139,7 +141,7 @@
   }
 
   window.GD = {
-    enabled, login, logout, me, list, folder, forgetFolders, put, move, patch, download, trash, makePublic, AuthError,
+    enabled, login, logout, me, list, folder, forgetFolders, put, move, patch, stat, download, trash, makePublic, AuthError,
     get valid() { return valid(); },
     get email() { return tok && tok.email; },
     get known() { return !!(tok && (tok.email || tok.access)); },

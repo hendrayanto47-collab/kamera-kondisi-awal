@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.10.0 · 17 Nov 2026";
+const APP_VERSION = "2.10.1 · 17 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1057,6 +1057,7 @@ async function fetchVids(keys, why) {
   try {
     for (const k of miss) {
       const v = videos.get(k); i++;
+      if (!v.gid) { toast("Video ini belum ada di Drive akun yang sedang dipakai. Ambil dari HP yang merekamnya."); continue; }
       toast(`Mengambil video ${i}/${miss.length} dari Drive… (${(((v.size || 0) + (v.sizeP || 0)) / 1048576).toFixed(1)} MB)`);
       let blob = await GD.download(v.gid), plain = v.gidP ? await GD.download(v.gidP) : undefined;
       if (window.KKAFix) { if (await KKAFix.needsFix(blob)) blob = await KKAFix.fix(blob, v.dur); if (plain && await KKAFix.needsFix(plain)) plain = await KKAFix.fix(plain, v.dur); }
@@ -1866,7 +1867,7 @@ const sv = v => (v == null ? "" : String(v));
 function cloudPending() {
   let n = 0;
   for (const [k, ph] of photos) if (!ph.gs && (inPaket(k) || k.startsWith("#keg|"))) n++;
-  for (const [, v] of videos) if (!v.gs && (!v.room || paket.some(p => p.id === v.room))) n++;
+  for (const [, v] of videos) if (v.blob && !v.gs && (!v.room || paket.some(p => p.id === v.room))) n++;
   try { n += JSON.parse(lsGet("kka-gtomb") || "[]").length; } catch (e) {}
   return n;
 }
@@ -1896,13 +1897,17 @@ async function cloudSync(manual) {
   let up = 0, down = 0, gone = 0;
   try {
     if (!GD.email) await GD.me();
-    // Ganti sekolah/NPSN: mulai folder baru, semua dikirim ulang
-    if (lsGet("kka-gnpsn") !== npsn) {
+    // Kunci sinkron = akun Google + NPSN. Bila akun atau sekolah berganti: mulai folder baru, semua dikirim ulang
+    // (dan TIDAK ada foto lokal yang dihapus karena tidak ditemukan di akun baru).
+    const syncKey = GD.email + "|" + npsn, prevKey = lsGet("kka-gnpsn");
+    if (prevKey === npsn) lsSet("kka-gnpsn", syncKey); // format lama (hanya NPSN): anggap akun yang sama
+    else if (prevKey !== syncKey) {
       GD.forgetFolders();
       for (const [k, ph] of photos) { ph.gs = false; ph.gid = undefined; persist(k); }
       for (const [k, v] of videos) { v.gs = false; v.gid = v.gidP = undefined; persistVid(k); }
       lsSet("kka-gstateh", null); lsSet("kka-gstatet", null); lsSet("kka-gtomb", null);
-      lsSet("kka-gnpsn", npsn);
+      lsSet("kka-gnpsn", syncKey);
+      if (prevKey) toast(`Akun Google berganti ke ${GD.email}. Semua foto & video di HP ini dikirim ke Drive akun ini.`);
     }
     const rootName = `Kamera Revit SD - ${profil.nama} (NPSN ${npsn})`;
     const F = path => GD.folder(npsn, path, rootName);
@@ -1966,15 +1971,24 @@ async function cloudSync(manual) {
     await Promise.all([0, 1, 2].map(async () => { while (pulls.length) { const [k, e] = pulls.shift(); await pullOne(k, e); } }));
 
     // ---- 3) Yang sudah dihapus di HP lain ikut dihapus di sini
+    // Hanya dihapus bila file Drive-nya BENAR-BENAR ada di Sampah akun ini. File yang tidak dikenal akun ini (404)
+    // tidak menghapus apa pun: fotonya dikirim ulang ke akun ini.
     const ids = new Set(remote.map(f => f.id));
-    if (remote.length) {
-      for (const [k, ph] of [...photos]) if (ph.gs && ph.gid && !ids.has(ph.gid)) { if (ph.url) URL.revokeObjectURL(ph.url); photos.delete(k); dbPut(k, null); gone++; }
-      for (const [k, v] of [...videos]) if (v.gs && v.gid && !ids.has(v.gid)) { if (v.url) URL.revokeObjectURL(v.url); videos.delete(k); dbPut(k, null); gone++; }
+    const cand = [...[...photos].map(([k, r]) => ["p", k, r]), ...[...videos].map(([k, r]) => ["v", k, r])]
+      .filter(([, , r]) => r.gs && r.gid && !ids.has(r.gid));
+    for (const [kind, k, r] of cand) {
+      let trashed = false;
+      try { trashed = !!(await GD.stat(r.gid)).trashed; }
+      catch (e) { if (e instanceof GD.AuthError) throw e; if (e.status === 404) { r.gs = false; r.gid = r.gidP = undefined; kind === "p" ? persist(k) : persistVid(k); } continue; }
+      if (!trashed) continue;
+      if (r.url) URL.revokeObjectURL(r.url);
+      (kind === "p" ? photos : videos).delete(k); dbPut(k, null); gone++;
     }
 
     // ---- 5+6) Kirim foto & video baru — 3 sekaligus agar cepat; video ruangan didahulukan agar tidak menunggu semua foto
     const jobs = [];
     for (const [k, v] of [...videos]) {
+      if (!v.blob) continue; // video yang belum diambil dari Drive tidak bisa dikirim
       if (v.gs && v.reup) { jobs.push({ rank: 0, run: async () => { // ganti isi file Drive dengan video yang sudah diperbaiki
         for (const [id, b] of [[v.gid, v.blob], [v.gidP, v.plain]]) if (id && b) { try { await GD.put(b, {}, id); } catch (e) { if (e.status !== 404) throw e; } }
         v.reup = undefined; persistVid(k); } }); continue; }
