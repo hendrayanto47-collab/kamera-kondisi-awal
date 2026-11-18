@@ -4,7 +4,8 @@
    Menyediakan window.KKAVid. */
 (function () {
   const $ = id => document.getElementById(id);
-  let W = 1280, H = 720; const FPS = 30; // ukuran bingkai rekaman: Full HD bila kamera mendukung, selain itu HD
+  let W = 1280, H = 720; const FPS = 30;
+  let vrZoom = null; // ukuran bingkai rekaman: Full HD bila kamera mendukung, selain itu HD
   const MAX_SEC = 5 * 60; // batas rekaman agar file tidak terlalu besar
   const two = n => String(n).padStart(2, "0");
   const mmss = s => `${two(Math.floor(s / 60))}:${two(Math.floor(s % 60))}`;
@@ -77,6 +78,9 @@
     { const big = Math.max(v.videoWidth, v.videoHeight), small = Math.min(v.videoWidth, v.videoHeight);
       if (hq && big >= 1900 && small >= 1060) { W = 1920; H = 1080; } else { W = 1280; H = 720; } }
     rec.hq = W === 1920;
+    rec.dz = 1;
+    if (!vrZoom && window.KKAZoom) vrZoom = KKAZoom.make("vrZoom", "vrVideo", "vr");
+    if (vrZoom) vrZoom.attach(stream.getVideoTracks()[0], { onDigital: z => { if (rec) rec.dz = z; }, digitalMax: 3 });
     rec.canvas = $("vrCanvas"); rec.canvas.width = W; rec.canvas.height = H;
     rec.ctx = rec.canvas.getContext("2d");
     // Mode "both": selain video bercap, salinan bingkai tanpa cap direkam bersamaan (dua file dari satu rekaman)
@@ -107,7 +111,7 @@
     else if (!moving && Math.abs(diff) > dead) rec.level += diff * (1 - Math.exp(-dt / tau));
     const vw = v.videoWidth, vh = v.videoHeight, sw = turn % 180 !== 0;
     const fw = sw ? vh : vw, fh = sw ? vw : vh;           // ukuran bingkai setelah diputar
-    const zoom = hl ? 1.12 : 1;                            // potong tepi agar sudut kosong tidak terlihat saat diluruskan
+    const zoom = (hl ? 1.12 : 1) * (rec.dz || 1);         // potong tepi (pelurusan) × zoom digital bila kamera tak punya zoom
     const sc = Math.max(W / fw, H / fh) * zoom;
     x.fillStyle = "#000"; x.fillRect(0, 0, W, H);
     x.save(); x.translate(W / 2, H / 2);
@@ -250,6 +254,7 @@
     if (!rec) return;
     cancelAnimationFrame(rec.raf); clearInterval(rec.guideTimer); clearInterval(rec.ovTimer);
     if (rec.stream) rec.stream.getTracks().forEach(t => t.stop());
+    if (vrZoom) vrZoom.reset();
     if (S()) S().stop();
     $("vrVideo").srcObject = null;
     $("vr").hidden = true; document.documentElement.classList.remove("vf-open");

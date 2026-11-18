@@ -96,6 +96,7 @@
     v.srcObject = stream;
     try { await v.play(); } catch (e) {}
     await new Promise(r => (v.videoWidth ? r() : v.addEventListener("loadedmetadata", r, { once: true })));
+    camZoom.attach(stream.getVideoTracks()[0]);
     layout();
     timer = setInterval(tick, 250);
   }
@@ -104,7 +105,7 @@
     clearInterval(timer); timer = null;
     window.removeEventListener("devicemotion", onMotion);
     if (stream) stream.getTracks().forEach(t => t.stop());
-    stream = null;
+    stream = null; camZoom.reset();
     $("vfVideo").srcObject = null;
     if (opts && opts.ghost) { try { URL.revokeObjectURL(opts.ghost); } catch (e) {} }
     $("vfGhost").hidden = true; $("vfGhost").removeAttribute("src");
@@ -231,14 +232,16 @@
   async function capture() {
     const v = $("vfVideo"); if (!v.videoWidth) return;
     const turn = frameRotation(pose());
-    const vw = v.videoWidth, vh = v.videoHeight;
+    const fw = v.videoWidth, fh = v.videoHeight;
+    const dz = camZoom.hw ? 1 : camZoom.z; // zoom digital: ambil bagian tengah tanpa diperbesar ulang
+    const vw = Math.round(fw / dz), vh = Math.round(fh / dz), sx = (fw - vw) / 2, sy = (fh - vh) / 2;
     const c = document.createElement("canvas");
     const swap = turn % 180 !== 0;
     c.width = swap ? vh : vw; c.height = swap ? vw : vh;
     const x = c.getContext("2d");
     x.translate(c.width / 2, c.height / 2);
     x.rotate(turn * Math.PI / 180);
-    x.drawImage(v, -vw / 2, -vh / 2, vw, vh);
+    x.drawImage(v, sx, sy, vw, vh, -vw / 2, -vh / 2, vw, vh);
     const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.92));
     $("vf").classList.add("flash"); setTimeout(() => $("vf").classList.remove("flash"), 180);
     const file = new File([blob], "kamera.jpg", { type: "image/jpeg", lastModified: Date.now() });
@@ -249,7 +252,68 @@
   $("vfClose").addEventListener("click", () => { const o = opts; close(); if (o && o.onClose) o.onClose(); });
   $("vfNative").addEventListener("click", () => { const o = opts; close(); o.onFallback(""); });
 
+  /* ---------- Zoom kamera ----------
+     Bila HP mendukung, zoom memakai kamera itu sendiri (zoom lensa/sensor, bisa pindah ke lensa tele) → kualitas tetap.
+     Bila tidak, zoom digital (memotong bagian tengah) dibatasi agar sisi terpendek foto tetap ≥ 720 px. */
+  function makeZoom(boxId, videoId, padId) {
+    const st = { hw: false, min: 1, max: 1, z: 1, track: null, digitalMax: 1, onDigital: null };
+    const box = () => $(boxId);
+    function paint() {
+      const b = box(); if (!b) return;
+      const stops = [1, 2, 3, 5, 10].filter(x => x <= st.max + 1e-6);
+      if (st.max - stops[stops.length - 1] >= 0.3) stops.push(Math.floor(st.max * 10) / 10); // mis. 1.5× bila maksimum 1,5
+      if (st.max <= 1.01) { b.hidden = true; return; }
+      b.hidden = false;
+      b.innerHTML = stops.map(x => `<button type="button" data-z="${x}" class="${Math.abs(st.z - x) < 0.05 ? "on" : ""}">${x}×</button>`).join("")
+        + (stops.every(x => Math.abs(st.z - x) >= 0.05) ? `<span class="zcur">${st.z.toFixed(1)}×</span>` : "")
+        + (st.hw ? "" : `<small>digital</small>`);
+    }
+    async function set(z) {
+      z = Math.max(st.min, Math.min(st.max, z));
+      st.z = z;
+      if (st.hw && st.track) { try { await st.track.applyConstraints({ advanced: [{ zoom: z }] }); } catch (e) {} }
+      else {
+        const v = $(videoId); if (v) { v.style.transform = z > 1.001 ? `scale(${z})` : ""; }
+        if (st.onDigital) st.onDigital(z);
+      }
+      paint();
+    }
+    function attach(track, opts) {
+      st.track = track; st.onDigital = opts && opts.onDigital; st.z = 1;
+      const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+      const set0 = track && track.getSettings ? track.getSettings() : {};
+      if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+        st.hw = true; st.min = Math.max(1, caps.zoom.min); st.max = Math.min(caps.zoom.max, 10); st.z = set0.zoom || st.min;
+      } else {
+        st.hw = false; st.min = 1;
+        const short = Math.min(set0.width || 1280, set0.height || 720);
+        st.max = Math.max(1, Math.min(opts && opts.digitalMax || 4, Math.floor(short / 720 * 10) / 10));
+      }
+      const v = $(videoId); if (v) v.style.transform = "";
+      paint();
+    }
+    function reset() { st.track = null; st.z = 1; st.hw = false; st.max = 1; const v = $(videoId); if (v) v.style.transform = ""; const b = box(); if (b) b.hidden = true; }
+    // ketuk tombol 1×/2×/3×; cubit dua jari di layar kamera
+    document.addEventListener("click", e => { const t = e.target.closest(`#${boxId} [data-z]`); if (t) set(+t.dataset.z); });
+    let pinch = null;
+    const pad = () => $(padId);
+    document.addEventListener("touchstart", e => {
+      if (!st.track || st.max <= 1.01 || e.touches.length !== 2 || !pad() || pad().hidden || !pad().contains(e.target)) return;
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      pinch = { d, z: st.z };
+    }, { passive: true });
+    document.addEventListener("touchmove", e => {
+      if (!pinch || e.touches.length !== 2) return;
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      set(Math.round(pinch.z * d / pinch.d * 10) / 10);
+    }, { passive: true });
+    document.addEventListener("touchend", () => { pinch = null; }, { passive: true });
+    return { attach, reset, set, get z() { return st.z; }, get hw() { return st.hw; } };
+  }
+  const camZoom = makeZoom("vfZoom", "vfVideo", "vf");
+
   window.KKACam = { supported, open, close, T, _pose: pose, _frameRotation: frameRotation };
+  window.KKAZoom = { make: makeZoom };
   // Sensor dipakai bersama oleh perekam video
   window.KKASensor = {
     start() { grav = null; rot = 0; motionSeen = false; return requestSensors(); },

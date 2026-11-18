@@ -384,3 +384,10 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .vidremote{width:100%;aspect-ratio:16/9;max-width:100%;border:1px dashed var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:600 15px inherit;font-family:inherit;display:grid;place-content:center;gap:4px;cursor:pointer}.vidremote small{font-weight:400;color:var(--muted);font-size:12px}
 .rendays{display:grid;gap:4px;flex:1 1 100%}.rendays small{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}.rendays .chk{display:flex;gap:8px;align-items:center;font-size:14px}
 .kegday{display:grid;gap:6px;margin:0 0 12px}.kegday .hint{margin:0}.kegday .btn{justify-self:start;white-space:normal;text-align:left}
+/* Zoom kamera: 1× 2× 3× di atas tombol jepret */
+.vf-zoom{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(118px + env(safe-area-inset-bottom,0px));z-index:6;display:flex;align-items:center;gap:6px;padding:5px;border-radius:99px;background:rgba(0,0,0,.5)}
+.vf-zoom button{min-width:44px;height:44px;border-radius:99px;border:0;background:rgba(255,255,255,.14);color:#fff;font:700 14px/1 system-ui,sans-serif;cursor:pointer}
+.vf-zoom button.on{background:#f4c430;color:#111}
+.vf-zoom .zcur{color:#f4c430;font:700 14px system-ui,sans-serif;padding:0 6px}
+.vf-zoom small{color:#ccc;font-size:10px;padding-right:6px}
+#vfVideo,#vrVideo{transition:transform .15s ease;transform-origin:center}
