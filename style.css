@@ -391,3 +391,7 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .vf-zoom .zcur{color:#f4c430;font:700 14px system-ui,sans-serif;padding:0 6px}
 .vf-zoom small{color:#ccc;font-size:10px;padding-right:6px}
 #vfVideo,#vrVideo{transition:transform .15s ease;transform-origin:center}
+.tab.tabadd{border-style:dashed;opacity:.9}
+#tabAddBox{display:flex;align-items:center;gap:4px;padding:4px 6px}
+#tabAddBox input{width:100%;min-width:44px;font:700 16px var(--f-mono, monospace);text-align:center;border:0;background:transparent;color:inherit}
+#tabAddBox button{border:0;border-radius:6px;background:var(--ink);color:var(--bg);font:700 12px inherit;padding:6px 8px}

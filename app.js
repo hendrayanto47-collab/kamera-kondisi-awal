@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.13.0 · 19 Nov 2026";
+const APP_VERSION = "2.14.0 · 21 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -18,6 +18,20 @@ const EXTRA = { k: "ruang", l: "Dalam Ruangan", d: "Tambahan · lantai, dinding,
 // Foto dari versi lama ("Tampak Samping") tetap disimpan & ikut diunduh, tapi perlu diambil ulang sebagai serong 45°
 const LEGACY = { k: "samping", l: "Tampak Samping (versi lama)", d: "Ambil ulang sebagai serong 45°", extra: true, legacy: true };
 const ALL_ANGLES = [...ANGLES, EXTRA, LEGACY];
+/* Tahap progres (di atas 0%): 4 foto wajib Depan · Samping · Belakang · Dalam ruangan.
+   (Ruang tanpa bangunan, mis. Penataan lingkungan: tanpa foto dalam.) 0% tetap mengikuti form resmi di atas. */
+const PROG_ANGLES = [
+  { k: "depan",    l: "Tampak Depan",    d: "Lurus menghadap fasad" },
+  { k: "samping",  l: "Tampak Samping",  d: "Dinding samping dari ujung ke ujung" },
+  { k: "belakang", l: "Tampak Belakang", d: "Sisi belakang bangunan" },
+  { k: "ruang",    l: "Dalam Ruangan",   d: "Lantai, dinding, plafon" },
+];
+// Foto wajib sebuah ruang pada tahap tertentu
+function reqAngles(p, st) {
+  if (!st) return ANGLES;
+  return hasRoom(p) ? PROG_ANGLES : PROG_ANGLES.filter(a => a.k !== "ruang");
+}
+const reqCount = (p, st) => reqAngles(p, st).filter(a => photos.has(KEY(p.id, a.k, st))).length;
 
 /* Tahap dokumentasi. Kunci foto:
    0%      → "paket|sudut"            (sama seperti versi lama, foto lama tetap terbaca)
@@ -51,9 +65,15 @@ const curStage = () => view;
 const KEG_PRESET = ["Rapat persiapan / sosialisasi", "Pembongkaran", "Material datang", "Pekerjaan pondasi",
   "Pekerjaan struktur / kolom", "Pekerjaan dinding", "Pekerjaan atap", "Pekerjaan lantai", "Pekerjaan plafon",
   "Pemasangan pintu & jendela", "Instalasi listrik", "Pengecatan", "Pembersihan", "Serah terima"];
-const angleOf = k => ALL_ANGLES.find(a => a.k === k);
+const angleOf = (k, st) => (st ? PROG_ANGLES.find(a => a.k === k) : null) || ALL_ANGLES.find(a => a.k === k);
 const hasRoom = p => p.grup !== "Lingkungan";
 function slotsFor(p, st) {
+  if (st) { // progres: 4 wajib + foto lama (serong) yang terlanjur diambil tetap tampil
+    const s = reqAngles(p, st).slice();
+    for (const k of ["serongkanan", "serongkiri"]) if (photos.has(KEY(p.id, k, st))) s.push({ ...angleOf(k), l: angleOf(k).l + " (lama)", extra: true, legacy: true });
+    if (!hasRoom(p) && photos.has(KEY(p.id, "ruang", st))) s.push(EXTRA);
+    return s;
+  }
   const s = ANGLES.slice();
   if (hasRoom(p) || photos.has(KEY(p.id, "ruang", st))) s.push(EXTRA);
   if (photos.has(KEY(p.id, "samping", st))) s.push(LEGACY);
@@ -429,6 +449,14 @@ $("stgChips").addEventListener("click", e => {
   if (view === st) view = 0;
   renderStageEd(); render(); toast(`Tahap ${st}% dihapus.`);
 });
+function addStageFromTab() {
+  const n = Math.round(Number(String($("tabAddIn").value).replace(",", ".")));
+  if (!Number.isFinite(n) || n < 1 || n > 100) { toast("Isi angka persen antara 1 dan 100."); $("tabAddIn").focus(); return; }
+  if (!STAGES.includes(n)) { STAGES = [...STAGES, n].sort((a, b) => a - b); saveStages(); saveState(); }
+  view = n; try { localStorage.setItem("kka-view", String(view)); } catch (e) {}
+  renderStageEd(); render(); toast(`Tahap ${n}% dibuka. Foto wajib: depan, samping, belakang, dalam.`);
+}
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && e.target.id === "tabAddIn") addStageFromTab(); });
 $("stgAdd").addEventListener("click", () => {
   const n = Math.round(Number(String($("stgNew").value).replace(",", ".")));
   if (!Number.isFinite(n) || n < 1 || n > 100) { toast("Isi angka persen antara 1 dan 100."); $("stgNew").focus(); return; }
@@ -448,17 +476,23 @@ const kegKeys = () => [...photos.keys()].filter(k => k.startsWith("#keg|")).sort
 function stageKeys(st) { return [...photos.keys()].filter(k => { const q = parseKey(k); return !q.keg && q.st === st && inPaket(k); }); }
 
 function renderTabs() {
-  const cnt = st => paket.reduce((s, p) => s + ANGLES.filter(a => photos.has(KEY(p.id, a.k, st))).length, 0);
-  const total = paket.length * 4;
-  $("tabs").classList.toggle("scroll", STAGES.length > 6);
-  $("tabs").style.gridTemplateColumns = STAGES.length > 6 ? "" : `repeat(${STAGES.length},minmax(0,1fr))`;
+  const cnt = st => paket.reduce((s, p) => s + reqCount(p, st), 0);
+  const totalOf = st => paket.reduce((s, p) => s + reqAngles(p, st).length, 0);
+  $("tabs").classList.toggle("scroll", STAGES.length > 5);
+  $("tabs").style.gridTemplateColumns = STAGES.length > 5 ? "" : `repeat(${STAGES.length + 1},minmax(0,1fr))`;
   $("tabs").innerHTML = STAGES.map(st => {
-    const n = cnt(st);
+    const n = cnt(st), total = totalOf(st);
     return `<button type="button" role="tab" data-view="${st}" aria-selected="${view === st}" class="tab${view === st ? " on" : ""}${n === total && total ? " full" : ""}">
       <b>${st}%</b><small>${n}/${total}</small></button>`;
-  }).join("");
+  }).join("") + `<button type="button" class="tab tabadd" id="tabAdd" aria-label="Tambah tahap persen"><b>+</b><small>persen</small></button>`;
 }
 $("tabs").addEventListener("click", e => {
+  if (e.target.closest("#tabAdd")) { // ketik persen sendiri, mis. 37
+    const t = $("tabAdd");
+    t.outerHTML = `<span class="tab tabadd on" id="tabAddBox"><input type="number" inputmode="numeric" min="1" max="100" id="tabAddIn" placeholder="%" aria-label="Persen tahap baru"><button type="button" id="tabAddOk">OK</button></span>`;
+    $("tabAddIn").focus(); return;
+  }
+  if (e.target.closest("#tabAddOk")) return addStageFromTab();
   const b = e.target.closest("[data-view]"); if (!b) return;
   view = +b.dataset.view;
   try { localStorage.setItem("kka-view", String(view)); } catch (e) {}
@@ -507,13 +541,13 @@ function renderPaket(st) {
       const h = document.createElement("p"); h.className = "group-title"; h.textContent = p.grup;
       list.appendChild(h); last = p.grup;
     }
-    const n = ANGLES.filter(a => photos.has(KEY(p.id, a.k, st))).length;
+    const need = reqAngles(p, st).length, n = reqCount(p, st);
     const slots = slotsFor(p, st);
     const pk = slots.map(a => KEY(p.id, a.k, st)).filter(k => photos.has(k));
     const allUp = pk.length && pk.every(k => photos.get(k).up);
     const el = document.createElement("article");
-    el.className = "paket" + (n === 4 ? " done" : "");
-    el.innerHTML = `<div class="ph"><h3>${esc(p.nama)}</h3><span class="chip">${n}/4 wajib</span>
+    el.className = "paket" + (n === need ? " done" : "");
+    el.innerHTML = `<div class="ph"><h3>${esc(p.nama)}</h3><span class="chip">${n}/${need} wajib</span>
       <span class="ph-acts">${pk.length ? `<button class="mini-btn share" data-share="${esc(p.id)}" type="button">${allUp ? "✓ Drive" : "Unggah ke Drive"}</button>` : ""}
       <button class="iconbtn" data-del="${esc(p.id)}" type="button" aria-label="Hapus ruang ${esc(p.nama)} dari daftar">Hapus ruang</button></span></div>
       <div class="slots">${slots.map(a => {
@@ -533,17 +567,17 @@ function renderPaket(st) {
       }).join("")}</div>`;
     list.appendChild(el);
   }
-  const total = paket.length * 4;
-  const cnt = paket.reduce((s, p) => s + ANGLES.filter(a => photos.has(KEY(p.id, a.k, st))).length, 0);
+  const total = paket.reduce((s, p) => s + reqAngles(p, st).length, 0);
+  const cnt = paket.reduce((s, p) => s + reqCount(p, st), 0);
   const anyPhoto = stageKeys(st).length > 0;
   $("tCount").textContent = cnt; $("tOf").hidden = false; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${st}%`;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
   $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto; $("galAllBtn").disabled = !anyPhoto; renderShareBtn();
-  const kurang = paket.filter(p => ANGLES.some(a => !photos.has(KEY(p.id, a.k, st)))).length;
+  const kurang = paket.filter(p => reqCount(p, st) < reqAngles(p, st).length).length;
   $("dockMsg").textContent = !profil.nama
     ? "Isi dulu nama sekolah dan NPSN, lalu ketuk kotak foto untuk membuka kamera."
-    : !anyPhoto ? (st ? `Tahap ${st}%: ketuk kotak foto. Foto 0% tampil samar di kamera sebagai acuan posisi.` : "Ketuk kotak foto untuk membuka kamera. Foto langsung diberi cap identitas.")
-    : kurang ? `${stageName(st)}: ${kurang} menu paket belum lengkap 4 foto wajib.`
+    : !anyPhoto ? (st ? `Tahap ${st}%: foto wajib Tampak Depan, Samping, Belakang, dan Dalam Ruangan. Foto 0% tampil samar di kamera sebagai acuan bila ada.` : "Ketuk kotak foto untuk membuka kamera. Foto langsung diberi cap identitas.")
+    : kurang ? `${stageName(st)}: ${kurang} menu paket belum lengkap foto wajibnya.`
     : `${stageName(st)} lengkap. Ketuk Unggah ke Drive.`;
 }
 
@@ -695,7 +729,7 @@ function openCamera(k, cap) {
     });
   }
   const { pid, ak, st } = q;
-  const p = paket.find(x => x.id === pid), a = angleOf(ak);
+  const p = paket.find(x => x.id === pid), a = angleOf(ak, st);
   const ref = st ? photos.get(KEY(pid, ak, 0)) : null;
   const SUB = {
     serongkanan: "Garis kuning putus-putus = posisi pojok depan kanan bangunan.",
@@ -703,6 +737,7 @@ function openCamera(k, cap) {
     depan: "Seluruh bangunan dan atap masuk bingkai, lurus menghadap fasad.",
     belakang: "Seluruh dinding belakang dan atap masuk bingkai.",
     ruang: "Dari pojok ruangan, arahkan diagonal: lantai, dinding, plafon.",
+    samping: "Seluruh dinding samping dari ujung ke ujung, beserta atap, masuk bingkai.",
   };
   KKACam.open({
     title: `${a.l.toUpperCase()} — ${p.nama.toUpperCase()} · ${st}%`,
@@ -742,8 +777,8 @@ $("optGuide").addEventListener("change", e => {
 });
 let guideKey = null;
 function showGuide(k, withCamera) {
-  const { pid, ak } = parseKey(k);
-  const p = paket.find(q => q.id === pid), a = angleOf(ak);
+  const { pid, ak, st } = parseKey(k);
+  const p = paket.find(q => q.id === pid), a = angleOf(ak, st);
   guideKey = k;
   $("gEyebrow").textContent = `Panduan posisi · ${p.nama}`;
   $("gTitle").textContent = a.l;
@@ -1254,7 +1289,7 @@ function reportScenes(scope, sec) {
       const rows = [];
       for (const a of ALL_ANGLES) {
         const shots = stages.map(st => [st, photos.get(KEY(p.id, a.k, st))]).filter(([, ph]) => ph);
-        if (shots.length) rows.push([a, shots]);
+        if (shots.length) rows.push([angleOf(a.k, shots[shots.length - 1][0]), shots]);
       }
       if (!rows.length) continue;
       const used = [...new Set(rows.flatMap(([, sh]) => sh.map(([st]) => st + "%")))];
@@ -1395,7 +1430,7 @@ function stampCtx(k, cap, away) {
   const q = parseKey(k);
   if (away === undefined) away = !!(photos.get(k) || {}).away;
   if (q.keg) return { p: { nama: cap || "Kegiatan" }, a: { l: "Kegiatan", k: "keg" }, opts: { title: `KEGIATAN — ${(cap || "").toUpperCase()}`, tag: "DOKUMENTASI KEGIATAN", away } };
-  return { p: paket.find(x => x.id === q.pid), a: angleOf(q.ak), opts: { tag: stageTag(q.st) } };
+  return { p: paket.find(x => x.id === q.pid), a: angleOf(q.ak, q.st), opts: { tag: stageTag(q.st) } };
 }
 
 /* Cap LENGKAP: peta mini + alamat + Lat/Long + Plus Code + waktu + identitas sekolah.
@@ -1582,7 +1617,7 @@ let pending = null; // {key, rec, url}
 const labelOf = k => {
   const q = parseKey(k);
   if (q.keg) return "Kegiatan " + ((photos.get(k) || {}).cap || pendingCap || "");
-  const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak);
+  const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak, q.st);
   return p && a ? `${a.l} ${p.nama}${q.st ? " " + q.st + "%" : ""}` : k;
 };
 $("picker").addEventListener("change", e => {
@@ -1777,7 +1812,7 @@ $("rCancel").addEventListener("click", closeReview);
 function fname(k) {
   const q = parseKey(k), ph = photos.get(k);
   if (q.keg) return `${tgl(ph.t)} ${jam(ph.t)}.${two(new Date(ph.t).getSeconds())} - Kegiatan - ${clean(ph.cap || "Kegiatan")}.jpg`;
-  const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak);
+  const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak, q.st);
   return `${tgl(ph.t)} ${jam(ph.t)} - ${clean(p.nama)} - ${a.l}${q.st ? " - " + q.st + "%" : ""}.jpg`;
 }
 /* ---------- Simpan ke galeri HP ----------
