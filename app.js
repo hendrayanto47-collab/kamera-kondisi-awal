@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.16.0 · 22 Nov 2026";
+const APP_VERSION = "2.16.1 · 22 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -42,7 +42,7 @@ const DEFAULT_STAGES = [0, 25, 50, 75, 100];
 let STAGES = DEFAULT_STAGES.slice();
 try {
   const st = JSON.parse(localStorage.getItem("kka-stages") || "null");
-  if (Array.isArray(st) && st.length) STAGES = [...new Set([0, ...st.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 100)])].sort((a, b) => a - b);
+  if (Array.isArray(st) && st.length) STAGES = [...new Set([0, ...st.map(Number).filter(n => Number.isFinite(n) && n >= 0 && n <= 100)])].sort((a, b) => a - b);
 } catch (e) {}
 function saveStages() { try { localStorage.setItem("kka-stages", JSON.stringify(STAGES)); } catch (e) {} }
 const KEY = (pid, ak, st) => (st ? `@${st}|${pid}|${ak}` : `${pid}|${ak}`);
@@ -51,8 +51,11 @@ function parseKey(k) {
   if (k.startsWith("@")) { const [s, pid, ak] = k.split("|"); return { st: +s.slice(1), pid, ak }; }
   const [pid, ak] = k.split("|"); return { st: 0, pid, ak };
 }
-const stageTag = st => (st === 0 ? "KONDISI AWAL 0%" : st === 100 ? "PROGRES 100% (SELESAI)" : `PROGRES ${st}%`);
-const stageName = st => (st === 0 ? "Kondisi Awal 0%" : st === 100 ? "Progres 100% (Selesai)" : `Progres ${st}%`);
+// Persen boleh desimal (mis. 3,25). Kunci internal memakai titik ("@3.25|…"), tampilan memakai koma.
+const pn = st => String(st).replace(".", ",");
+const parsePct = v => { const n = Number(String(v).trim().replace(",", ".")); return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN; };
+const stageTag = st => (st === 0 ? "KONDISI AWAL 0%" : st === 100 ? "PROGRES 100% (SELESAI)" : `PROGRES ${pn(st)}%`);
+const stageName = st => (st === 0 ? "Kondisi Awal 0%" : st === 100 ? "Progres 100% (Selesai)" : `Progres ${pn(st)}%`);
 let view = 0;          // tahap yang sedang dibuka di layar Foto
 let screen = "foto";   // foto | kegiatan | video | atur
 try {
@@ -438,16 +441,16 @@ const stageCount = st => [...photos.keys()].filter(k => { const q = parseKey(k);
 function renderStageEd() {
   $("stgChips").innerHTML = STAGES.map(st => st === 0
     ? `<span class="stg fixed">0% <small>tetap</small></span>`
-    : `<span class="stg">${st}%<button type="button" data-stdel="${st}" aria-label="Hapus tahap ${st}%">×</button></span>`).join("");
+    : `<span class="stg">${pn(st)}%<button type="button" data-stdel="${st}" aria-label="Hapus tahap ${pn(st)}%">×</button></span>`).join("");
 }
 $("stgChips").addEventListener("click", e => {
   const b = e.target.closest("[data-stdel]"); if (!b) return;
   const st = +b.dataset.stdel, n = stageCount(st);
-  if (n) { toast(`Tahap ${st}% masih berisi ${n} foto. Hapus atau unduh fotonya dulu.`); return; }
+  if (n) { toast(`Tahap ${pn(st)}% masih berisi ${n} foto. Hapus atau unduh fotonya dulu.`); return; }
   if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "hapus?"; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = "×"; } }, 3000); return; }
   STAGES = STAGES.filter(x => x !== st); saveStages();
   if (view === st) view = 0;
-  renderStageEd(); render(); toast(`Tahap ${st}% dihapus.`);
+  renderStageEd(); render(); toast(`Tahap ${pn(st)}% dihapus.`);
 });
 /* ---------- Ubah angka persen sebuah tahap (mis. 4% → 5%) ----------
    Foto & video tahap itu ikut pindah: kunci baru, cap dicetak ulang dengan persen baru, folder Drive ikut pindah. */
@@ -457,19 +460,19 @@ $("stgEditBtn").addEventListener("click", () => {
 $("stgEditX").addEventListener("click", () => { $("stgEditBox").hidden = true; });
 $("stgEditDel").addEventListener("click", e => {
   const st = view, n = stageCount(st), b = e.currentTarget;
-  if (n) return toast(`Tahap ${st}% berisi ${n} foto. Ganti angkanya saja, atau hapus fotonya dulu.`);
+  if (n) return toast(`Tahap ${pn(st)}% berisi ${n} foto. Ganti angkanya saja, atau hapus fotonya dulu.`);
   if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "Ketuk lagi untuk menghapus"; setTimeout(() => { delete b.dataset.armed; b.textContent = "Hapus tahap ini"; }, 3000); return; }
   delete b.dataset.armed;
   STAGES = STAGES.filter(x => x !== st); saveStages(); saveState(); view = 0;
   try { localStorage.setItem("kka-view", "0"); } catch (er) {}
-  $("stgEditBox").hidden = true; renderStageEd(); render(); toast(`Tahap ${st}% dihapus.`);
+  $("stgEditBox").hidden = true; renderStageEd(); render(); toast(`Tahap ${pn(st)}% dihapus.`);
 });
 document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && e.target.id === "stgEditIn") $("stgEditOk").click(); });
 $("stgEditOk").addEventListener("click", async e => {
-  const from = view, to = Math.round(Number(String($("stgEditIn").value).replace(",", ".")));
-  if (!Number.isFinite(to) || to < 1 || to > 100) return toast("Isi angka persen antara 1 dan 100.");
+  const from = view, to = parsePct($("stgEditIn").value);
+  if (!Number.isFinite(to) || to <= 0 || to > 100) return toast("Isi angka persen lebih dari 0 sampai 100, boleh pakai koma (mis. 3,25).");
   if (to === from) { $("stgEditBox").hidden = true; return; }
-  if (STAGES.includes(to)) return toast(`Tahap ${to}% sudah ada. Pilih angka lain, atau hapus tahap ${to}% dulu bila kosong.`);
+  if (STAGES.includes(to)) return toast(`Tahap ${pn(to)}% sudah ada. Pilih angka lain, atau hapus tahap ${pn(to)}% dulu bila kosong.`);
   if (restamping) return toast("Tunggu proses cetak ulang yang sedang berjalan.");
   const b = e.currentTarget; b.disabled = true; restamping = true;
   const keys = [...photos.keys()].filter(k => !k.startsWith("#") && parseKey(k).st === from);
@@ -495,22 +498,22 @@ $("stgEditOk").addEventListener("click", async e => {
   view = to; try { localStorage.setItem("kka-view", String(to)); } catch (er) {}
   restamping = false; b.disabled = false; b.textContent = "Simpan"; $("stgEditBox").hidden = true;
   renderStageEd(); render(); cloudSoon(1500);
-  toast(`Tahap ${from}% diganti menjadi ${to}%${keys.length ? ` (${keys.length} foto ikut pindah & cap diperbarui)` : ""}.`);
+  toast(`Tahap ${pn(from)}% diganti menjadi ${pn(to)}%${keys.length ? ` (${keys.length} foto ikut pindah & cap diperbarui)` : ""}.`);
 });
 function addStageFromTab() {
-  const n = Math.round(Number(String($("tabAddIn").value).replace(",", ".")));
-  if (!Number.isFinite(n) || n < 1 || n > 100) { toast("Isi angka persen antara 1 dan 100."); $("tabAddIn").focus(); return; }
+  const n = parsePct($("tabAddIn").value);
+  if (!Number.isFinite(n) || n <= 0 || n > 100) { toast("Isi angka persen lebih dari 0 sampai 100, boleh pakai koma (mis. 3,25)."); $("tabAddIn").focus(); return; }
   if (!STAGES.includes(n)) { STAGES = [...STAGES, n].sort((a, b) => a - b); saveStages(); saveState(); }
   view = n; try { localStorage.setItem("kka-view", String(view)); } catch (e) {}
-  renderStageEd(); render(); toast(`Tahap ${n}% dibuka. Foto wajib: depan, samping, belakang, dalam.`);
+  renderStageEd(); render(); toast(`Tahap ${pn(n)}% dibuka. Foto wajib: depan, samping, belakang, dalam.`);
 }
 document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && e.target.id === "tabAddIn") addStageFromTab(); });
 $("stgAdd").addEventListener("click", () => {
-  const n = Math.round(Number(String($("stgNew").value).replace(",", ".")));
-  if (!Number.isFinite(n) || n < 1 || n > 100) { toast("Isi angka persen antara 1 dan 100."); $("stgNew").focus(); return; }
-  if (STAGES.includes(n)) { toast(`Tahap ${n}% sudah ada.`); return; }
+  const n = parsePct($("stgNew").value);
+  if (!Number.isFinite(n) || n <= 0 || n > 100) { toast("Isi angka persen lebih dari 0 sampai 100, boleh pakai koma (mis. 3,25)."); $("stgNew").focus(); return; }
+  if (STAGES.includes(n)) { toast(`Tahap ${pn(n)}% sudah ada.`); return; }
   STAGES = [...STAGES, n].sort((a, b) => a - b); saveStages();
-  $("stgNew").value = ""; renderStageEd(); render(); toast(`Tahap ${n}% ditambahkan.`);
+  $("stgNew").value = ""; renderStageEd(); render(); toast(`Tahap ${pn(n)}% ditambahkan.`);
 });
 $("stgReset").addEventListener("click", () => {
   const keep = STAGES.filter(st => stageCount(st) > 0);
@@ -531,13 +534,13 @@ function renderTabs() {
   $("tabs").innerHTML = STAGES.map(st => {
     const n = cnt(st), total = totalOf(st);
     return `<button type="button" role="tab" data-view="${st}" aria-selected="${view === st}" class="tab${view === st ? " on" : ""}${n === total && total ? " full" : ""}">
-      <b>${st}%</b><small>${n}/${total}</small></button>`;
+      <b>${pn(st)}%</b><small>${n}/${total}</small></button>`;
   }).join("") + `<button type="button" class="tab tabadd" id="tabAdd" aria-label="Tambah tahap persen"><b>+</b><small>persen</small></button>`;
 }
 $("tabs").addEventListener("click", e => {
   if (e.target.closest("#tabAdd")) { // ketik persen sendiri, mis. 37
     const t = $("tabAdd");
-    t.outerHTML = `<span class="tab tabadd on" id="tabAddBox"><input type="number" inputmode="numeric" min="1" max="100" id="tabAddIn" placeholder="%" aria-label="Persen tahap baru"><button type="button" id="tabAddOk">OK</button></span>`;
+    t.outerHTML = `<span class="tab tabadd on" id="tabAddBox"><input type="text" inputmode="decimal" id="tabAddIn" placeholder="mis. 3,25" aria-label="Persen tahap baru"><button type="button" id="tabAddOk">OK</button></span>`;
     $("tabAddIn").focus(); return;
   }
   if (e.target.closest("#tabAddOk")) return addStageFromTab();
@@ -619,13 +622,13 @@ function renderPaket(st) {
   const total = paket.reduce((s, p) => s + reqAngles(p, st).length, 0);
   const cnt = paket.reduce((s, p) => s + reqCount(p, st), 0);
   const anyPhoto = stageKeys(st).length > 0;
-  $("tCount").textContent = cnt; $("tOf").hidden = false; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${st}%`;
+  $("tCount").textContent = cnt; $("tOf").hidden = false; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${pn(st)}%`;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
   $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto; $("galAllBtn").disabled = !anyPhoto; renderShareBtn();
   const kurang = paket.filter(p => reqCount(p, st) < reqAngles(p, st).length).length;
   $("dockMsg").textContent = !profil.nama
     ? "Isi dulu nama sekolah dan NPSN, lalu ketuk kotak foto untuk membuka kamera."
-    : !anyPhoto ? (st ? `Tahap ${st}%: foto wajib Tampak Depan, Samping, Belakang, dan Dalam Ruangan. Foto 0% tampil samar di kamera sebagai acuan bila ada.` : "Ketuk kotak foto untuk membuka kamera. Foto langsung diberi cap identitas.")
+    : !anyPhoto ? (st ? `Tahap ${pn(st)}%: foto wajib Tampak Depan, Samping, Belakang, dan Dalam Ruangan. Foto 0% tampil samar di kamera sebagai acuan bila ada.` : "Ketuk kotak foto untuk membuka kamera. Foto langsung diberi cap identitas.")
     : kurang ? `${stageName(st)}: ${kurang} menu paket belum lengkap foto wajibnya.`
     : `${stageName(st)} lengkap. Ketuk Unggah ke Drive.`;
 }
@@ -789,7 +792,7 @@ function openCamera(k, cap) {
     samping: "Seluruh dinding samping dari ujung ke ujung, beserta atap, masuk bingkai.",
   };
   KKACam.open({
-    title: `${a.l.toUpperCase()} — ${p.nama.toUpperCase()} · ${st}%`,
+    title: `${a.l.toUpperCase()} — ${p.nama.toUpperCase()} · ${pn(st)}%`,
     sub: ref ? "Foto 0% tampil samar: samakan posisi bangunan dengan foto itu." : (SUB[a.k] || ""),
     corner: !ref && (a.k === "serongkanan" || a.k === "serongkiri"),
     room: a.k === "ruang",
@@ -1002,7 +1005,7 @@ const SHOT_ORDER = ["depan", "akses", "serong", "halaman", "dalam", "titik", "de
 const shotRank = v => { const i = SHOT_ORDER.indexOf(v.shot); return i < 0 ? 99 : i; };
 const roomClips = (pid, st) => [...videos.entries()].filter(([, v]) => v.room === pid && v.st === st)
   .sort((a, b) => shotRank(a[1]) - shotRank(b[1]) || a[1].t - b[1].t);
-const rvFolder = st => `VIDEO_REVITSD_${st}`;
+const rvFolder = st => `VIDEO_REVITSD_${pn(st)}`;
 const rvName = (p, i, v, ver) => { const sh = shotOf(p, v);
   return `${two(i + 1)} - ${clean(p.nama)}${sh ? " - " + clean(sh.t) : ""}${ver === "polos" && v.plain ? " - polos" : ""}.${v.ext || "mp4"}`; };
 function renderRoomVid() {
@@ -1317,13 +1320,13 @@ function reportScenes(scope, sec) {
     for (const p of paket) {
       const groups = stages.map(st => [st, roomClips(p.id, st)]).filter(([, c]) => c.some(([, v]) => !v.skip));
       if (!groups.length) continue;
-      head(p.grup.toUpperCase(), p.nama, [all ? `Tahap: ${groups.map(([st]) => st + "%").join(" → ")}` : stageName(stages[0])], 2);
+      head(p.grup.toUpperCase(), p.nama, [all ? `Tahap: ${groups.map(([st]) => pn(st) + "%").join(" → ")}` : stageName(stages[0])], 2);
       for (const [st, clips] of groups) clips.filter(([, v]) => !v.skip).forEach(([, v], i) => {
         const d = Math.max(1, v.dur || RV_MAX_SEC), sec = clipSec === "full" ? d : Math.min(d, +clipSec);
         const sh = shotOf(p, v);
         sc.push({ type: "clip", blob: ($("mkVer").value === "polos" && v.plain) || v.blob, sec,
           start: clipSec === "full" ? 0 : Math.min(1, Math.max(0, d - sec)), // lewati 1 detik pertama yang sering goyang
-          badge: st === 0 ? "0% · KONDISI AWAL" : st === 100 ? "100% · SELESAI" : `PROGRES ${st}%`, badgeColor: badgeColor(st),
+          badge: st === 0 ? "0% · KONDISI AWAL" : st === 100 ? "100% · SELESAI" : `PROGRES ${pn(st)}%`, badgeColor: badgeColor(st),
           label: `${p.nama}${sh ? " · " + sh.t : ""} · ${tgl(v.t)}` });
       });
     }
@@ -1341,10 +1344,10 @@ function reportScenes(scope, sec) {
         if (shots.length) rows.push([angleOf(a.k, shots[shots.length - 1][0]), shots]);
       }
       if (!rows.length) continue;
-      const used = [...new Set(rows.flatMap(([, sh]) => sh.map(([st]) => st + "%")))];
+      const used = [...new Set(rows.flatMap(([, sh]) => sh.map(([st]) => pn(st) + "%")))];
       head(p.grup.toUpperCase(), p.nama, [`Tahap: ${used.join(" → ")}`], 2);
       for (const [a, shots] of rows) for (const [st, ph] of shots)
-        sc.push({ type: "photo", blob: ph.blob, badge: st === 0 ? "0% · KONDISI AWAL" : st === 100 ? "100% · SELESAI" : `PROGRES ${st}%`, badgeColor: badgeColor(st), label: `${p.nama} · ${a.l}`, sec });
+        sc.push({ type: "photo", blob: ph.blob, badge: st === 0 ? "0% · KONDISI AWAL" : st === 100 ? "100% · SELESAI" : `PROGRES ${pn(st)}%`, badgeColor: badgeColor(st), label: `${p.nama} · ${a.l}`, sec });
     }
   }
   head("REVITALISASI SD 2026", school, ["Video dibuat " + new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })], 3);
@@ -1688,7 +1691,7 @@ const labelOf = k => {
   const q = parseKey(k);
   if (q.keg) return "Kegiatan " + ((photos.get(k) || {}).cap || pendingCap || "");
   const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak, q.st);
-  return p && a ? `${a.l} ${p.nama}${q.st ? " " + q.st + "%" : ""}` : k;
+  return p && a ? `${a.l} ${p.nama}${q.st ? " " + pn(q.st) + "%" : ""}` : k;
 };
 $("picker").addEventListener("change", e => {
   const f = e.target.files && e.target.files[0];
@@ -1858,7 +1861,7 @@ function showReview(p, a, checks) {
   const blocked = checks.some(c => c.block);
   pending.blocked = blocked;
   const q = parseKey(pending.key);
-  $("rTitle").textContent = q.keg ? `Kegiatan — ${p.nama}` : `${a.l} — ${p.nama}${q.st ? " · " + q.st + "%" : ""}`;
+  $("rTitle").textContent = q.keg ? `Kegiatan — ${p.nama}` : `${a.l} — ${p.nama}${q.st ? " · " + pn(q.st) + "%" : ""}`;
   $("rImg").src = pending.url;
   $("rRawBtn").hidden = !pending.gal;
   $("rRawBtn").textContent = pending.isRaw ? "🏷️ Tambahkan stamp" : "🏷️ Foto sudah ada stamp (simpan apa adanya)";
@@ -1902,7 +1905,7 @@ function fname(k) {
   const q = parseKey(k), ph = photos.get(k);
   if (q.keg) return `${tgl(ph.t)} ${jam(ph.t)}.${two(new Date(ph.t).getSeconds())} - Kegiatan - ${clean(ph.cap || "Kegiatan")}.jpg`;
   const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak, q.st);
-  return `${tgl(ph.t)} ${jam(ph.t)} - ${clean(p.nama)} - ${a.l}${q.st ? " - " + q.st + "%" : ""}.jpg`;
+  return `${tgl(ph.t)} ${jam(ph.t)} - ${clean(p.nama)} - ${a.l}${q.st ? " - " + pn(q.st) + "%" : ""}.jpg`;
 }
 /* ---------- Simpan ke galeri HP ----------
    iPhone/iPad: lewat menu Bagikan → "Simpan Gambar/Video" (masuk ke app Foto); maks. 10 file per kali.
@@ -1992,7 +1995,7 @@ function viewKeys() {
 }
 $("zipBtn").onclick = async () => {
   const rootName = screen === "kegiatan" ? `Foto Kegiatan - ${clean(profil.nama || "Sekolah")}`
-    : view === 0 ? `Foto Kondisi Awal - ${clean(profil.nama || "Sekolah")}` : `Foto Progres ${view}% - ${clean(profil.nama || "Sekolah")}`;
+    : view === 0 ? `Foto Kondisi Awal - ${clean(profil.nama || "Sekolah")}` : `Foto Progres ${pn(view)}% - ${clean(profil.nama || "Sekolah")}`;
   const entries = []; let first = Infinity;
   for (const k of viewKeys()) {
     const ph = photos.get(k), q = parseKey(k);
@@ -2237,7 +2240,7 @@ async function cloudSync(manual) {
     const tick = () => { cloudProg = `Mengirim ke Drive… ${up}/${total}`; renderCloud(); };
     async function upPhoto(k, ph) {
       const q = parseKey(k);
-      const path = q.keg ? `Kegiatan/${kegFolder(ph)}` : `FOTO_REVITSD_${q.st}/${clean(paket.find(p => p.id === q.pid).nama)}`;
+      const path = q.keg ? `Kegiatan/${kegFolder(ph)}` : `FOTO_REVITSD_${pn(q.st)}/${clean(paket.find(p => p.id === q.pid).nama)}`;
       const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90), gp: path.slice(0, 100), aw: ph.away ? "1" : "", raw: ph.raw ? "1" : "" };
       const meta = { name: fname(k), appProperties: props };
       let r = null;
@@ -2258,7 +2261,7 @@ async function cloudSync(manual) {
       const idx = Math.max(0, roomClips(v.room, v.st).findIndex(([kk]) => kk === k));
       const name = rvName(p, idx, v, "stamp");
       const meta = { name, appProperties: { shot: sv(v.shot), title: sv(v.title).slice(0, 90), st: sv(v.st) } };
-      const path = `VIDEO_REVITSD_${v.st}/${clean(p.nama)}`, pathP = `VIDEO_REVITSD_${v.st} (polos)/${clean(p.nama)}`;
+      const path = `VIDEO_REVITSD_${pn(v.st)}/${clean(p.nama)}`, pathP = `VIDEO_REVITSD_${pn(v.st)} (polos)/${clean(p.nama)}`;
       for (const [id, pth] of [[v.gid, path], [v.gidP, pathP]]) if (id) {
         try { await GD.patch(id, meta); await GD.move(id, await F(pth)); } catch (e) { if (e.status !== 404) throw e; }
       }
@@ -2269,7 +2272,7 @@ async function cloudSync(manual) {
       if (v.room) {
         const p = paket.find(x => x.id === v.room);
         const idx = Math.max(0, roomClips(v.room, v.st).findIndex(([kk]) => kk === k));
-        path = `VIDEO_REVITSD_${v.st}/${clean(p.nama)}`; pathP = `VIDEO_REVITSD_${v.st} (polos)/${clean(p.nama)}`;
+        path = `VIDEO_REVITSD_${pn(v.st)}/${clean(p.nama)}`; pathP = `VIDEO_REVITSD_${pn(v.st)} (polos)/${clean(p.nama)}`;
         name = rvName(p, idx, v, "stamp"); nameP = name;
       } else { path = "Video lainnya"; pathP = "Video lainnya/polos"; name = vidName(k); nameP = name.replace(/(\.\w+)$/, " - polos$1"); }
       const base = { kka: "file", npsn, kind: "video", k, t: sv(v.t), dur: sv(Math.round((v.dur || 0) * 10) / 10), title: sv(v.title).slice(0, 90),
@@ -2333,7 +2336,7 @@ function renderCloud() {
     $("cloudVidAll").textContent = `Ambil semua video ke HP ini (${rem.length} · ${(rem.reduce((a, v) => a + (v.size || 0) + (v.sizeP || 0), 0) / 1048576).toFixed(0)} MB)`; }
   // pilihan folder untuk tautan portal
   const sel = $("cloudFolder"), prev = sel.value;
-  sel.innerHTML = STAGES.flatMap(st => [`FOTO_REVITSD_${st}`, `VIDEO_REVITSD_${st}`, `VIDEO_REVITSD_${st} (polos)`])
+  sel.innerHTML = STAGES.flatMap(st => [`FOTO_REVITSD_${pn(st)}`, `VIDEO_REVITSD_${pn(st)}`, `VIDEO_REVITSD_${pn(st)} (polos)`])
     .concat(["Kegiatan"]).map(x => `<option>${esc(x)}</option>`).join("");
   if (prev) sel.value = prev;
 }

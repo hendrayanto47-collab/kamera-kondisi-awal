@@ -48,7 +48,7 @@
       <div>
         <p class="eyebrow"><span id="eyebrowStage">Kondisi Awal 0%</span> <button type="button" class="stgedit" id="stgEditBtn" hidden>✏️ Ubah %</button></p>
         <div class="stgeditbox" id="stgEditBox" hidden>
-          <label>Ganti <b id="stgEditFrom"></b> menjadi <input type="number" inputmode="numeric" min="1" max="100" id="stgEditIn">%</label>
+          <label>Ganti <b id="stgEditFrom"></b> menjadi <input type="text" inputmode="decimal" id="stgEditIn" placeholder="mis. 3,25">%</label>
           <button class="btn primary" type="button" id="stgEditOk">Simpan</button>
           <button class="btn" type="button" id="stgEditDel">Hapus tahap ini</button>
           <button class="btn ghost" type="button" id="stgEditX">Batal</button>
@@ -181,7 +181,7 @@
       <h2 id="hStg">Tahap persen</h2>
       <div class="stgchips" id="stgChips"></div>
       <div class="inrow">
-        <input type="number" id="stgNew" inputmode="numeric" min="1" max="100" step="1" placeholder="Tambah tahap, mis. 30" aria-label="Tambah tahap persen">
+        <input type="text" id="stgNew" inputmode="decimal" placeholder="Tambah tahap, mis. 3,25" aria-label="Tambah tahap persen">
         <button class="btn" id="stgAdd" type="button">Tambah</button>
       </div>
       <button class="btn ghost" id="stgReset" type="button">Kembalikan bawaan 0–25–50–75–100%</button>
