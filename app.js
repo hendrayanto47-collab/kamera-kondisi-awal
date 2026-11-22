@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.17.2 · 22 Nov 2026";
+const APP_VERSION = "2.17.3 · 22 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1426,9 +1426,77 @@ async function tagJpeg(blob) {
 }
 // Aplikasi kamera ber-stamp yang dikenali dari data EXIF fotonya
 const STAMP_APPS = /gps\s*map\s*camera|timestamp\s*camera|geotag|gps\s*camera|map\s*camera|kamera\s*gps|solocator|note\s*cam|open\s*camera.*stamp/i;
-// Pilihan terakhir pengguna untuk foto galeri (sudah ber-stamp / tambahkan stamp), diingat untuk unggahan berikutnya
-const galRawPref = () => { try { return localStorage.getItem("kka-galraw") === "1"; } catch (e) { return false; } };
-const setGalRawPref = v => { try { localStorage.setItem("kka-galraw", v ? "1" : "0"); } catch (e) {} };
+/* Deteksi stamp dari gambarnya langsung (GPS Map Camera, Timemark, dll.):
+   stamp = beberapa baris tulisan terang di atas kotak gelap, rata kiri/kanan, di separuh bawah foto.
+   Dicari baris-baris tulisan (banyak tepi terang→gelap dalam satu baris piksel) yang ujung kiri
+   atau kanannya sejajar. Tekstur alami (rumput, papan) ditolak bila pola serupa juga ada di separuh atas. */
+function textLines(lum, W, y0, y1) {
+  const n = y1 - y0, H = lum.length / W;
+  const e = new Uint8Array(W * n), tr = new Uint8Array(n);
+  for (let y = 0; y < n; y++) {
+    const o = (y0 + y) * W; let cnt = 0, dk = 0;
+    for (let x = 0; x < W; x++) {
+      const v = lum[o + x];
+      if (v < 100) dk++;
+      if (v >= 160) {
+        let hit = false;
+        for (let d = 1; d <= 2 && !hit; d++) {
+          if (x - d >= 0 && lum[o + x - d] <= v - 70) hit = true;
+          else if (x + d < W && lum[o + x + d] <= v - 70) hit = true;
+        }
+        if (hit) { e[y * W + x] = 1; cnt++; }
+      }
+    }
+    tr[y] = cnt >= Math.max(4, W * 0.012) && dk > 0.3 * W ? 1 : 0;
+  }
+  const lines = [];
+  for (let y = 0; y < n; y++) {
+    if (!tr[y]) continue;
+    const s = y;
+    while (y < n && (tr[y] || (y + 1 < n && tr[y + 1]))) y++;
+    const h = y - s;
+    if (h < H * 0.005 || h > H * 0.07) continue;
+    // kolom yang berisi tepi tulisan → ambil potongan bersambung terpanjang (jeda antarkata kecil)
+    let best = null, a0 = -1, pv = -1, gap = W * 0.025, cols = 0;
+    for (let x = 0; x < W; x++) {
+      let any = 0; for (let yy = s; yy < y; yy++) if (e[yy * W + x]) { any = 1; break; }
+      if (!any) continue; cols++;
+      if (a0 < 0) a0 = x; else if (x - pv > gap) { if (!best || pv - a0 > best[1] - best[0]) best = [a0, pv]; a0 = x; }
+      pv = x;
+    }
+    if (a0 >= 0 && (!best || pv - a0 > best[1] - best[0])) best = [a0, pv];
+    if (cols >= 4 && best && best[1] - best[0] >= W * 0.12) lines.push([s, y, best[0], best[1]]);
+  }
+  let top = 0;
+  for (const side of [2, 3]) for (const L of lines) {
+    const g = lines.filter(M => Math.abs(M[side] - L[side]) <= W * 0.02);
+    let ok = 1; for (let i = 1; i < g.length; i++) if (g[i][0] - g[i - 1][1] <= H * 0.06) ok++;
+    top = Math.max(top, ok);
+  }
+  return top;
+}
+function looksStamped(img) {
+  try {
+    // perkecil bertahap (½ tiap langkah) agar tulisan kecil tetap terbaca, sampai lebar ≤ 1000 px
+    let src = img, w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    while (w > 2000) {
+      const c = document.createElement("canvas"); c.width = Math.round(w / 2); c.height = Math.round(h / 2);
+      c.getContext("2d").drawImage(src, 0, 0, c.width, c.height); src = c; w = c.width; h = c.height;
+    }
+    const W = Math.min(1000, w), H = Math.round(h * W / w);
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const x = c.getContext("2d", { willReadFrequently: true });
+    x.imageSmoothingQuality = "high"; x.drawImage(src, 0, 0, W, H);
+    const d = x.getImageData(0, 0, W, H).data, lum = new Uint8Array(W * H);
+    for (let i = 0, j = 0; j < lum.length; i += 4, j++) {
+      const r = d[i], g = d[i + 1], b = d[i + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const L = (r * 299 + g * 587 + b * 114) / 1000;
+      lum[j] = L >= 160 && mx - mn >= 70 ? 159 : L; // tulisan stamp putih/abu, bukan warna mencolok
+    }
+    const bot = textLines(lum, W, Math.floor(H * 0.5), H), top = textLines(lum, W, 0, Math.floor(H * 0.5));
+    return bot >= 4 && top <= 2;
+  } catch (e) { return false; }
+}
 async function hasOwnStamp(file) {
   try { return new TextDecoder("latin1").decode(await file.slice(0, 65536).arrayBuffer()).includes(STAMP_MARK); } catch (e) { return false; }
 }
@@ -1777,7 +1845,7 @@ $("galPick").addEventListener("change", e => {
 $("galMulti").addEventListener("change", async e => {
   const files = [...(e.target.files || [])]; e.target.value = "";
   const cap = pendingCap; if (!files.length || !cap) return;
-  let ok = 0, fail = 0;
+  let ok = 0, fail = 0, nRaw = 0;
   for (const [i, f] of files.entries()) {
     toast(`Mengimpor foto ${i + 1}/${files.length}…`);
     try {
@@ -1786,7 +1854,9 @@ $("galMulti").addEventListener("change", async e => {
       const ex = await readExif(f), takenAt = ex && ex.t ? ex.t : takenTime(f), gps = galGps(ex, kegAway);
       const capF = H_RE.test(cap) ? withH(cap, takenAt) : cap; // foto galeri dari hari lain: nomor H mengikuti tanggal fotonya
       const c = stampCtx(key, capF, kegAway);
-      const useRaw = $("kegGalRaw").checked || await hasOwnStamp(f) || !!(ex && ex.tags && STAMP_APPS.test(ex.tags));
+      // otomatis: stamp aplikasi ini, aplikasi kamera ber-stamp (EXIF), atau stamp yang terlihat di gambarnya
+      const useRaw = await hasOwnStamp(f) || !!(ex && ex.tags && STAMP_APPS.test(ex.tags)) || looksStamped(img);
+      if (useRaw) nRaw++;
       const others = [...photos.entries()].filter(([k]) => k.startsWith("#keg|")).map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
       const checks = KKA.runChecks({ info, takenAt, gps, others, allowPortrait: true });
       const res = useRaw ? await rawRec(f, takenAt, gps) : await stamp(img, takenAt, gps, c.p, c.a, c.opts);
@@ -1795,10 +1865,8 @@ $("galMulti").addEventListener("change", async e => {
     } catch (err) { fail++; }
   }
   render(); cloudSoon(1500);
-  toast(`${ok} foto kegiatan ditambahkan ke "${cap}"${fail ? `, ${fail} gagal dibaca (pakai JPG/PNG)` : ""}.`);
+  toast(`${ok} foto kegiatan ditambahkan ke "${cap}"${nRaw ? ` (${nRaw === ok ? "semua" : nRaw} sudah ber-stamp, disimpan apa adanya)` : ""}${fail ? `, ${fail} gagal dibaca (pakai JPG/PNG)` : ""}.`);
 });
-$("kegGalRaw").checked = galRawPref();
-$("kegGalRaw").addEventListener("change", e => setGalRawPref(e.target.checked));
 $("kegGal").addEventListener("click", () => {
   const cap = $("kegCap").value.trim();
   if (!cap) { toast("Isi keterangan kegiatan dulu, mis. \"H2 pembongkaran\"."); $("kegCap").focus(); return; }
@@ -1834,18 +1902,19 @@ async function processFile(f, key, turn, gal) {
       .filter(([k]) => { if (k === key) return false; const o = parseKey(k); return q.keg ? o.keg : !o.keg && o.pid === q.pid && o.st === q.st; })
       .map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: away ? null : ph.lat, lng: away ? null : ph.lng }));
     const checks = KKA.runChecks({ info, takenAt, gps: gps && away ? { ...gps, away: true } : gps, others, allowPortrait: q.keg });
-    // Foto galeri yang sudah ber-stamp: dari aplikasi ini terdeteksi otomatis; dari aplikasi lain lewat tombol di layar tinjau
+    // Foto galeri yang sudah ber-stamp terdeteksi otomatis: stamp aplikasi ini, aplikasi kamera ber-stamp (EXIF),
+    // atau stamp yang terlihat di gambarnya. Tombol di layar tinjau hanya untuk mengoreksi foto ini bila tebakan keliru.
     const own = gal && await hasOwnStamp(f);
     const app = gal && ex && ex.tags && STAMP_APPS.test(ex.tags) ? (ex.tags.match(STAMP_APPS) || [""])[0] : "";
-    // urutan: stamp aplikasi ini → pilihan yang baru diketuk → stamp aplikasi lain (EXIF) → pilihan terakhir yang diingat
-    const useRaw = gal && (own || (gal.raw !== undefined ? gal.raw : (!!app || galRawPref())));
+    const seen = gal && !own && !app && gal.raw === undefined && looksStamped(img);
+    const useRaw = gal && (own || (gal.raw !== undefined ? gal.raw : (!!app || seen)));
     const res = useRaw ? await rawRec(f, takenAt, gps) : await stamp(img, takenAt, gps, p, a, c.opts);
     const warn = checks.filter(c => !c.ok).map(c => c.text);
     if (pending) URL.revokeObjectURL(pending.url);
     pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined, away: away || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn, gal, info, takenAt, gps, isRaw: !!useRaw };
     showReview(p, a, checks);
     if (own) toast("Foto ini sudah ber-stamp dari Kamera Revit SD — disimpan apa adanya, tanpa cap tambahan.");
-    else if (useRaw && gal.raw === undefined) toast(app ? `Foto dari ${app} — sudah ber-stamp, disimpan apa adanya. Ketuk "Tambahkan stamp" bila perlu.` : "Foto galeri disimpan apa adanya (sesuai pilihan terakhir). Ketuk \"Tambahkan stamp\" bila foto ini belum ber-stamp.");
+    else if (useRaw && gal.raw === undefined) toast(app ? `Foto dari ${app} — sudah ber-stamp, disimpan apa adanya.` : "Foto ini sudah ada stamp-nya — disimpan apa adanya, tanpa stamp tambahan.");
   } catch (err) {
     toast("Foto tidak bisa dibaca. Coba ambil ulang atau pilih format JPG/PNG.");
   }
@@ -1860,7 +1929,6 @@ $("rRawBtn").addEventListener("click", async () => {
   if (!pending || !pending.gal) return;
   const { raw, key, turn, gal, isRaw } = pending;
   URL.revokeObjectURL(pending.url); pending = null;
-  setGalRawPref(!isRaw); // diingat untuk foto galeri berikutnya
   processFile(raw, key, turn, { ...gal, raw: !isRaw });
 });
 // Bila foto terlanjur menyamping, putar 90° lalu periksa ulang
