@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.17.1 · 22 Nov 2026";
+const APP_VERSION = "2.17.2 · 22 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1424,6 +1424,11 @@ async function tagJpeg(blob) {
     return new Blob([blob.slice(0, 2), seg, blob.slice(2)], { type: "image/jpeg" });
   } catch (e) { return blob; }
 }
+// Aplikasi kamera ber-stamp yang dikenali dari data EXIF fotonya
+const STAMP_APPS = /gps\s*map\s*camera|timestamp\s*camera|geotag|gps\s*camera|map\s*camera|kamera\s*gps|solocator|note\s*cam|open\s*camera.*stamp/i;
+// Pilihan terakhir pengguna untuk foto galeri (sudah ber-stamp / tambahkan stamp), diingat untuk unggahan berikutnya
+const galRawPref = () => { try { return localStorage.getItem("kka-galraw") === "1"; } catch (e) { return false; } };
+const setGalRawPref = v => { try { localStorage.setItem("kka-galraw", v ? "1" : "0"); } catch (e) {} };
 async function hasOwnStamp(file) {
   try { return new TextDecoder("latin1").decode(await file.slice(0, 65536).arrayBuffer()).includes(STAMP_MARK); } catch (e) { return false; }
 }
@@ -1738,9 +1743,12 @@ async function readExif(file) {
         const str = en => { const off = en.cnt > 4 ? t0 + u32(en.val) : en.val; let s = ""; for (let i = 0; i < en.cnt - 1; i++) s += String.fromCharCode(dv.getUint8(off + i)); return s; };
         const rat3 = en => { const off = t0 + u32(en.val); const r = i => u32(off + i * 8) / (u32(off + i * 8 + 4) || 1); return r(0) + r(1) / 60 + r(2) / 3600; };
         const out = {}, i0 = ifd(u32(t0 + 4));
+        const txt = en => { try { return en && en.type === 2 ? str(en) : ""; } catch (e) { return ""; } };
+        out.tags = [i0[0x0131], i0[0x010E], i0[0x010F], i0[0x0110], i0[0x013B]].map(txt).join(" | ");
         if (i0[0x8769]) { const ei = ifd(u32(i0[0x8769].val)), d = ei[0x9003] || ei[0x9004];
           const mm = d && str(d).match(/(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/);
-          if (mm) { const t = new Date(+mm[1], +mm[2] - 1, +mm[3], +mm[4], +mm[5], +mm[6]).getTime(); if (t > Date.UTC(2015, 0, 1) && t <= Date.now() + 6e4) out.t = t; } }
+          if (mm) { const t = new Date(+mm[1], +mm[2] - 1, +mm[3], +mm[4], +mm[5], +mm[6]).getTime(); if (t > Date.UTC(2015, 0, 1) && t <= Date.now() + 6e4) out.t = t; }
+          if (ei[0x9286]) { try { const en = ei[0x9286], off = en.cnt > 4 ? t0 + u32(en.val) : en.val; let c = ""; for (let i = 8; i < Math.min(en.cnt, 200); i++) { const ch = dv.getUint8(off + i); if (ch) c += String.fromCharCode(ch); } out.tags += " | " + c; } catch (e) {} } }
         if (i0[0x8825]) { const g = ifd(u32(i0[0x8825].val));
           if (g[2] && g[4]) { let lat = rat3(g[2]), lng = rat3(g[4]);
             if (g[1] && str({ ...g[1], cnt: 2 }) === "S") lat = -lat; if (g[3] && str({ ...g[3], cnt: 2 }) === "W") lng = -lng;
@@ -1778,7 +1786,7 @@ $("galMulti").addEventListener("change", async e => {
       const ex = await readExif(f), takenAt = ex && ex.t ? ex.t : takenTime(f), gps = galGps(ex, kegAway);
       const capF = H_RE.test(cap) ? withH(cap, takenAt) : cap; // foto galeri dari hari lain: nomor H mengikuti tanggal fotonya
       const c = stampCtx(key, capF, kegAway);
-      const useRaw = $("kegGalRaw").checked || await hasOwnStamp(f);
+      const useRaw = $("kegGalRaw").checked || await hasOwnStamp(f) || !!(ex && ex.tags && STAMP_APPS.test(ex.tags));
       const others = [...photos.entries()].filter(([k]) => k.startsWith("#keg|")).map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
       const checks = KKA.runChecks({ info, takenAt, gps, others, allowPortrait: true });
       const res = useRaw ? await rawRec(f, takenAt, gps) : await stamp(img, takenAt, gps, c.p, c.a, c.opts);
@@ -1789,6 +1797,8 @@ $("galMulti").addEventListener("change", async e => {
   render(); cloudSoon(1500);
   toast(`${ok} foto kegiatan ditambahkan ke "${cap}"${fail ? `, ${fail} gagal dibaca (pakai JPG/PNG)` : ""}.`);
 });
+$("kegGalRaw").checked = galRawPref();
+$("kegGalRaw").addEventListener("change", e => setGalRawPref(e.target.checked));
 $("kegGal").addEventListener("click", () => {
   const cap = $("kegCap").value.trim();
   if (!cap) { toast("Isi keterangan kegiatan dulu, mis. \"H2 pembongkaran\"."); $("kegCap").focus(); return; }
@@ -1826,13 +1836,16 @@ async function processFile(f, key, turn, gal) {
     const checks = KKA.runChecks({ info, takenAt, gps: gps && away ? { ...gps, away: true } : gps, others, allowPortrait: q.keg });
     // Foto galeri yang sudah ber-stamp: dari aplikasi ini terdeteksi otomatis; dari aplikasi lain lewat tombol di layar tinjau
     const own = gal && await hasOwnStamp(f);
-    const useRaw = gal && (own || gal.raw);
+    const app = gal && ex && ex.tags && STAMP_APPS.test(ex.tags) ? (ex.tags.match(STAMP_APPS) || [""])[0] : "";
+    // urutan: stamp aplikasi ini → pilihan yang baru diketuk → stamp aplikasi lain (EXIF) → pilihan terakhir yang diingat
+    const useRaw = gal && (own || (gal.raw !== undefined ? gal.raw : (!!app || galRawPref())));
     const res = useRaw ? await rawRec(f, takenAt, gps) : await stamp(img, takenAt, gps, p, a, c.opts);
     const warn = checks.filter(c => !c.ok).map(c => c.text);
     if (pending) URL.revokeObjectURL(pending.url);
     pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined, away: away || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn, gal, info, takenAt, gps, isRaw: !!useRaw };
     showReview(p, a, checks);
     if (own) toast("Foto ini sudah ber-stamp dari Kamera Revit SD — disimpan apa adanya, tanpa cap tambahan.");
+    else if (useRaw && gal.raw === undefined) toast(app ? `Foto dari ${app} — sudah ber-stamp, disimpan apa adanya. Ketuk "Tambahkan stamp" bila perlu.` : "Foto galeri disimpan apa adanya (sesuai pilihan terakhir). Ketuk \"Tambahkan stamp\" bila foto ini belum ber-stamp.");
   } catch (err) {
     toast("Foto tidak bisa dibaca. Coba ambil ulang atau pilih format JPG/PNG.");
   }
@@ -1845,9 +1858,10 @@ async function rawRec(file, takenAt, gps) {
 // Layar tinjau (foto galeri): pilih "sudah ada stamp" ↔ "tambahkan stamp"
 $("rRawBtn").addEventListener("click", async () => {
   if (!pending || !pending.gal) return;
-  const { raw, key, turn, gal } = pending;
+  const { raw, key, turn, gal, isRaw } = pending;
   URL.revokeObjectURL(pending.url); pending = null;
-  processFile(raw, key, turn, { ...gal, raw: !gal.raw });
+  setGalRawPref(!isRaw); // diingat untuk foto galeri berikutnya
+  processFile(raw, key, turn, { ...gal, raw: !isRaw });
 });
 // Bila foto terlanjur menyamping, putar 90° lalu periksa ulang
 $("rRotate").addEventListener("click", () => {
