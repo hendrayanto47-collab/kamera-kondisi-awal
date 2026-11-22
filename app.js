@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.17.3 · 22 Nov 2026";
+const APP_VERSION = "2.17.4 · 22 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -609,7 +609,7 @@ function renderPaket(st) {
           <button class="shot${ph ? " has" : ""}${ref ? " ref" : ""}" type="button" data-shoot="${esc(k)}" aria-label="${ph ? "Lihat" : "Ambil"} foto ${a.l} ${esc(p.nama)}">
             ${ph ? `<img src="${ph.url}" alt="">` : ref ? `<img src="${ref.url}" alt=""><span class="reflbl">acuan 0%</span>` : SVG[a.k]}
             <span class="cam">${ph ? "Lihat" : "Ambil foto"}</span>
-            ${ph && cloudOn() ? `<span class="sync${ph.gs ? " ok" : ""}">${ph.gs ? "☁ Drive" : "Antre"}</span>` : ""}
+            ${ph && ph.bad ? `<span class="badph">Foto rusak — pilih ulang lewat Galeri</span>` : ph && cloudOn() ? `<span class="sync${ph.gs ? " ok" : ""}">${ph.gs ? "☁ Drive" : "Antre"}</span>` : ""}
             ${ph && ph.gal ? `<span class="galmark" title="Sudah disimpan ke galeri">📥 Galeri</span>` : ""}
             ${ph && ph.warn && ph.warn.length ? `<span class="warnb" title="${esc(ph.warn.join(" "))}">${ph.warn.length} catatan</span>` : ""}</button>
           <div class="slab"><span>${a.l}</span><span class="slab-acts">${ph
@@ -651,7 +651,7 @@ function renderKeg() {
     <div class="keggrid">${ks.map(k => {
     const ph = photos.get(k);
     return `<figure class="kegitem"><button type="button" class="shot has" data-view-k="${esc(k)}" aria-label="Lihat ${esc(ph.cap || "foto kegiatan")}">
-      <img src="${ph.url}" alt="">${ph.up || ph.gs ? '<span class="sync ok">✓ Drive</span>' : ""}${ph.gal ? '<span class="galmark">📥 Galeri</span>' : ""}</button>
+      <img src="${ph.url}" alt="">${ph.bad ? '<span class="badph">Foto rusak — hapus lalu impor ulang</span>' : ""}${ph.up || ph.gs ? '<span class="sync ok">✓ Drive</span>' : ""}${ph.gal ? '<span class="galmark">📥 Galeri</span>' : ""}</button>
       <figcaption><small>${tgl(ph.t)} ${jam(ph.t)}${ph.away ? " · 📍 luar sekolah" : ""}</small></figcaption></figure>`;
   }).join("")}</div></section>`).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
@@ -1859,7 +1859,7 @@ $("galMulti").addEventListener("change", async e => {
       if (useRaw) nRaw++;
       const others = [...photos.entries()].filter(([k]) => k.startsWith("#keg|")).map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
       const checks = KKA.runChecks({ info, takenAt, gps, others, allowPortrait: true });
-      const res = useRaw ? await rawRec(f, takenAt, gps) : await stamp(img, takenAt, gps, c.p, c.a, c.opts);
+      const res = useRaw ? await rawRec(f, takenAt, gps, img) : await stamp(img, takenAt, gps, c.p, c.a, c.opts);
       photos.set(key, { ...res, hash: info.hash, warn: checks.filter(x => !x.ok && !/dari galeri/.test(x.text)).map(x => x.text), cap: capF, away: kegAway || undefined, synced: false, gs: false, url: URL.createObjectURL(res.blob) });
       persist(key); ok++;
     } catch (err) { fail++; }
@@ -1908,7 +1908,7 @@ async function processFile(f, key, turn, gal) {
     const app = gal && ex && ex.tags && STAMP_APPS.test(ex.tags) ? (ex.tags.match(STAMP_APPS) || [""])[0] : "";
     const seen = gal && !own && !app && gal.raw === undefined && looksStamped(img);
     const useRaw = gal && (own || (gal.raw !== undefined ? gal.raw : (!!app || seen)));
-    const res = useRaw ? await rawRec(f, takenAt, gps) : await stamp(img, takenAt, gps, p, a, c.opts);
+    const res = useRaw ? await rawRec(f, takenAt, gps, img) : await stamp(img, takenAt, gps, p, a, c.opts);
     const warn = checks.filter(c => !c.ok).map(c => c.text);
     if (pending) URL.revokeObjectURL(pending.url);
     pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined, away: away || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn, gal, info, takenAt, gps, isRaw: !!useRaw };
@@ -1920,8 +1920,25 @@ async function processFile(f, key, turn, gal) {
   }
 }
 // Foto yang sudah ber-stamp: disimpan apa adanya (tanpa cap baru); tanggal & GPS dari foto/EXIF
-async function rawRec(file, takenAt, gps) {
-  const blob = /jpe?g/i.test(file.type) || !file.type ? new Blob([file], { type: "image/jpeg" }) : file;
+/* Isi file disalin ke memori saat itu juga: di Android, file dari galeri hanya "dipinjam" dan bisa
+   tidak terbaca lagi setelah pemilih ditutup (foto jadi kosong/rusak). Bila bukan JPEG yang bisa
+   dibuka (mis. HEIC), gambar disimpan ulang sebagai JPEG kualitas tinggi tanpa stamp tambahan. */
+const canDecode = blob => (window.createImageBitmap ? createImageBitmap(blob).then(b => { b.close && b.close(); return true; }, () => false)
+  : new Promise(r => { const i = new Image(), u = URL.createObjectURL(blob); i.onload = () => { URL.revokeObjectURL(u); r(true); }; i.onerror = () => { URL.revokeObjectURL(u); r(false); }; i.src = u; }));
+async function rawRec(file, takenAt, gps, img) {
+  let blob = null;
+  try {
+    const buf = await file.arrayBuffer(), h = new Uint8Array(buf, 0, 3);
+    if (h[0] === 0xFF && h[1] === 0xD8 && h[2] === 0xFF) blob = new Blob([buf], { type: "image/jpeg" });
+  } catch (e) {}
+  if (blob && !(await canDecode(blob))) blob = null;
+  if (!blob && img) {
+    const sc = Math.min(1, 4096 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas"); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.92));
+  }
+  if (!blob || !blob.size) throw new Error("foto tidak terbaca");
   return { blob, t: takenAt, lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, acc: gps ? gps.acc ?? null : null, sv: "asli", raw: true };
 }
 // Layar tinjau (foto galeri): pilih "sudah ada stamp" ↔ "tambahkan stamp"
@@ -2314,7 +2331,7 @@ async function cloudSync(manual) {
           ph.gpath = path; persist(k); } });
         continue;
       }
-      if (ph.gs || !(inPaket(k) || k.startsWith("#keg|"))) continue;
+      if (ph.gs || ph.bad || !(inPaket(k) || k.startsWith("#keg|"))) continue;
       jobs.push({ rank: 1, run: () => upPhoto(k, ph) });
     }
     jobs.sort((x, y) => x.rank - y.rank);
@@ -2518,9 +2535,23 @@ openDb().then(async d => {
   const used = [...photos.keys()].map(parseKey).filter(q => !q.keg).map(q => q.st);
   const merged = [...new Set([...STAGES, ...used])].sort((a, b) => a - b);
   if (merged.length !== STAGES.length) { STAGES = merged; saveStages(); }
-  renderStageEd(); render(); renderCloud(); cloudSoon(1500);
+  renderStageEd(); render(); renderCloud();
+  await checkBadPhotos();
+  cloudSoon(1500);
   repairVideos();
 });
+/* Foto yang isinya tidak terbaca lagi (file galeri "pinjaman" di Android pada versi sebelum 2.17.4):
+   ditandai agar operator memilih ulang, dan tidak dikirim ke Drive (pengiriman akan gagal terus). */
+async function checkBadPhotos() {
+  let n = 0;
+  for (const [k, ph] of [...photos]) {
+    if (ph.gs || !ph.blob) continue;
+    let ok = false;
+    try { ok = ph.blob.size > 0 && await canDecode(ph.blob); } catch (e) {}
+    if (!ok) { ph.bad = true; n++; }
+  }
+  if (n) { render(); toast(`${n} foto tidak terbaca (rusak). Ketuk "Galeri" pada foto bertanda merah untuk memilih ulang.`); }
+}
 /* Video lama (sebelum v2.5.0) tersimpan tanpa keterangan durasi → galeri menampilkan 00:00 dan tidak bisa digeser.
    Diperbaiki sekali di latar; salinan di Drive ikut diganti isinya saat sinkron. */
 async function repairVideos() {
