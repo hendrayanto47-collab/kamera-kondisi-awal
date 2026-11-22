@@ -395,3 +395,7 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 #tabAddBox{display:flex;align-items:center;gap:4px;padding:4px 6px}
 #tabAddBox input{width:100%;min-width:44px;font:700 16px var(--f-mono, monospace);text-align:center;border:0;background:transparent;color:inherit}
 #tabAddBox button{border:0;border-radius:6px;background:var(--ink);color:var(--bg);font:700 12px inherit;padding:6px 8px}
+.stgedit{border:0;background:transparent;color:var(--accent-strong, var(--ink));font:600 12px inherit;font-family:inherit;text-decoration:underline;cursor:pointer;padding:0 4px;letter-spacing:0;text-transform:none}
+.stgeditbox{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+.stgeditbox label{display:flex;gap:6px;align-items:center;flex:1 1 100%;font-size:14px}
+.stgeditbox input{width:80px;font:700 16px inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}

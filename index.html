@@ -46,7 +46,13 @@
   <section class="sumcard" id="sumCard" aria-live="polite">
     <div class="sum-top">
       <div>
-        <p class="eyebrow" id="eyebrowStage">Kondisi Awal 0%</p>
+        <p class="eyebrow"><span id="eyebrowStage">Kondisi Awal 0%</span> <button type="button" class="stgedit" id="stgEditBtn" hidden>✏️ Ubah %</button></p>
+        <div class="stgeditbox" id="stgEditBox" hidden>
+          <label>Ganti <b id="stgEditFrom"></b> menjadi <input type="number" inputmode="numeric" min="1" max="100" id="stgEditIn">%</label>
+          <button class="btn primary" type="button" id="stgEditOk">Simpan</button>
+          <button class="btn" type="button" id="stgEditDel">Hapus tahap ini</button>
+          <button class="btn ghost" type="button" id="stgEditX">Batal</button>
+        </div>
         <div class="tally"><b id="tCount">0</b><span id="tOf"> / <span id="tTotal">0</span></span> <span id="tUnit">foto wajib</span></div>
       </div>
       <div class="sum-btns">

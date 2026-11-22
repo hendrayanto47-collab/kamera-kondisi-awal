@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.14.0 · 21 Nov 2026";
+const APP_VERSION = "2.15.0 · 22 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -449,6 +449,54 @@ $("stgChips").addEventListener("click", e => {
   if (view === st) view = 0;
   renderStageEd(); render(); toast(`Tahap ${st}% dihapus.`);
 });
+/* ---------- Ubah angka persen sebuah tahap (mis. 4% → 5%) ----------
+   Foto & video tahap itu ikut pindah: kunci baru, cap dicetak ulang dengan persen baru, folder Drive ikut pindah. */
+$("stgEditBtn").addEventListener("click", () => {
+  $("stgEditFrom").textContent = view + "%"; $("stgEditIn").value = view; $("stgEditBox").hidden = false; $("stgEditIn").focus(); $("stgEditIn").select();
+});
+$("stgEditX").addEventListener("click", () => { $("stgEditBox").hidden = true; });
+$("stgEditDel").addEventListener("click", e => {
+  const st = view, n = stageCount(st), b = e.currentTarget;
+  if (n) return toast(`Tahap ${st}% berisi ${n} foto. Ganti angkanya saja, atau hapus fotonya dulu.`);
+  if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "Ketuk lagi untuk menghapus"; setTimeout(() => { delete b.dataset.armed; b.textContent = "Hapus tahap ini"; }, 3000); return; }
+  delete b.dataset.armed;
+  STAGES = STAGES.filter(x => x !== st); saveStages(); saveState(); view = 0;
+  try { localStorage.setItem("kka-view", "0"); } catch (er) {}
+  $("stgEditBox").hidden = true; renderStageEd(); render(); toast(`Tahap ${st}% dihapus.`);
+});
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && e.target.id === "stgEditIn") $("stgEditOk").click(); });
+$("stgEditOk").addEventListener("click", async e => {
+  const from = view, to = Math.round(Number(String($("stgEditIn").value).replace(",", ".")));
+  if (!Number.isFinite(to) || to < 1 || to > 100) return toast("Isi angka persen antara 1 dan 100.");
+  if (to === from) { $("stgEditBox").hidden = true; return; }
+  if (STAGES.includes(to)) return toast(`Tahap ${to}% sudah ada. Pilih angka lain, atau hapus tahap ${to}% dulu bila kosong.`);
+  if (restamping) return toast("Tunggu proses cetak ulang yang sedang berjalan.");
+  const b = e.currentTarget; b.disabled = true; restamping = true;
+  const keys = [...photos.keys()].filter(k => !k.startsWith("#") && parseKey(k).st === from);
+  let i = 0;
+  for (const k of keys) {
+    i++; b.textContent = `Memindahkan ${i}/${keys.length}…`;
+    const q = parseKey(k), nk = KEY(q.pid, q.ak, to), ph = photos.get(k);
+    const c = stampCtx(nk), sk = schoolKoor();
+    const gps = ph.lat != null ? { lat: ph.lat, lng: ph.lng, acc: ph.acc ?? null, src: ph.acc == null ? "sekolah" : "gps" } : sk ? { ...sk, acc: null, src: "sekolah" } : null;
+    let rec = { ...ph, gs: false, gal: undefined };
+    try {
+      const img = await createImageBitmap(ph.orig || ph.blob);
+      const res = await stamp(img, ph.t, gps, c.p, c.a, { ...c.opts, cover: !ph.orig });
+      URL.revokeObjectURL(ph.url);
+      rec = { ...rec, blob: res.blob, sv: res.sv, url: URL.createObjectURL(res.blob) };
+    } catch (er) {}
+    photos.delete(k); dbPut(k, null); photos.set(nk, rec); persist(nk);
+  }
+  for (const [k, v] of videos) if (v.st === from) {
+    v.st = to; if (v.title) v.title = v.title.replace(stageName(from), stageName(to)); if (v.gid) v.metaDirty = true; persistVid(k);
+  }
+  STAGES = [...STAGES.filter(x => x !== from), to].sort((a, c) => a - c); saveStages(); saveState();
+  view = to; try { localStorage.setItem("kka-view", String(to)); } catch (er) {}
+  restamping = false; b.disabled = false; b.textContent = "Simpan"; $("stgEditBox").hidden = true;
+  renderStageEd(); render(); cloudSoon(1500);
+  toast(`Tahap ${from}% diganti menjadi ${to}%${keys.length ? ` (${keys.length} foto ikut pindah & cap diperbarui)` : ""}.`);
+});
 function addStageFromTab() {
   const n = Math.round(Number(String($("tabAddIn").value).replace(",", ".")));
   if (!Number.isFinite(n) || n < 1 || n > 100) { toast("Isi angka persen antara 1 dan 100."); $("tabAddIn").focus(); return; }
@@ -526,6 +574,7 @@ function render() {
   $("sumCard").hidden = !(sc === "foto" || sc === "kegiatan");
   document.body.dataset.screen = sc;
   if (sc === "foto") { renderTabs(); $("eyebrowStage").textContent = stageName(view); renderPaket(view); }
+  $("stgEditBtn").hidden = sc !== "foto" || !view; if (sc !== "foto" || !view) $("stgEditBox").hidden = true;
   if (sc === "kegiatan") { $("eyebrowStage").textContent = "Dokumentasi kegiatan"; renderKeg(); }
   if (sc === "video") renderVid();
   renderTrash(); renderHeader();
@@ -2068,6 +2117,10 @@ async function cloudSync(manual) {
     const pullOne = async (k, e) => {
       const f = e.main; if (!f) return; const a = f.appProperties;
       if (a.kind === "photo") {
+        if (!photos.has(k)) { // file yang sama pindah kunci di HP lain (mis. tahap 4% → 5%): ganti kunci di sini juga
+          const old = [...photos.entries()].find(([kk, r]) => r.gid === f.id && kk !== k && r.gs); // hanya bila tidak ada ubahan lokal yang belum terkirim
+          if (old) { photos.delete(old[0]); dbPut(old[0], null); photos.set(k, { ...old[1], gmod: "" }); persist(k); }
+        }
         const loc = photos.get(k);
         if (loc && loc.gid === f.id && (!loc.gs || loc.gmod === f.modifiedTime)) return;
         if (loc && !loc.gs) { // diubah di HP ini dan belum terkirim: perubahan lokal yang dipakai
@@ -2084,7 +2137,8 @@ async function cloudSync(manual) {
         const loc = videos.get(k);
         if (loc) {
           if (!loc.gs && !loc.gid) { loc.gid = f.id; loc.gidP = e.plain && e.plain.id; }
-          else if (loc.gs && !loc.metaDirty && (a.shot || "") !== (loc.shot || "")) { loc.shot = a.shot || undefined; persistVid(k); }
+          else if (loc.gs && !loc.metaDirty && ((a.shot || "") !== (loc.shot || "") || (a.st !== undefined && a.st !== "" && +a.st !== loc.st))) {
+            loc.shot = a.shot || undefined; if (a.st !== undefined && a.st !== "") loc.st = +a.st; if (a.title) loc.title = a.title; persistVid(k); }
           return;
         }
         // Video TIDAK diunduh di sini (besar): cukup datanya; isi video diambil saat diputar/dibagikan/dipakai (lihat fetchVids)
@@ -2163,8 +2217,11 @@ async function cloudSync(manual) {
       const p = paket.find(x => x.id === v.room);
       const idx = Math.max(0, roomClips(v.room, v.st).findIndex(([kk]) => kk === k));
       const name = rvName(p, idx, v, "stamp");
-      const meta = { name, appProperties: { shot: sv(v.shot), title: sv(v.title).slice(0, 90) } };
-      for (const id of [v.gid, v.gidP]) if (id) { try { await GD.patch(id, meta); } catch (e) { if (e.status !== 404) throw e; } }
+      const meta = { name, appProperties: { shot: sv(v.shot), title: sv(v.title).slice(0, 90), st: sv(v.st) } };
+      const path = `VIDEO_REVITSD_${v.st}/${clean(p.nama)}`, pathP = `VIDEO_REVITSD_${v.st} (polos)/${clean(p.nama)}`;
+      for (const [id, pth] of [[v.gid, path], [v.gidP, pathP]]) if (id) {
+        try { await GD.patch(id, meta); await GD.move(id, await F(pth)); } catch (e) { if (e.status !== 404) throw e; }
+      }
       v.metaDirty = undefined; persistVid(k);
     }
     async function upVideo(k, v) {
