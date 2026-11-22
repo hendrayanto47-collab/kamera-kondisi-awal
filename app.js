@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.15.0 · 22 Nov 2026";
+const APP_VERSION = "2.16.0 · 22 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -111,7 +111,7 @@ function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
   dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, gal: v.gal, remote: v.remote, size: v.size, sizeP: v.sizeP, hasPlain: v.hasPlain, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal", "raw"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -480,7 +480,7 @@ $("stgEditOk").addEventListener("click", async e => {
     const c = stampCtx(nk), sk = schoolKoor();
     const gps = ph.lat != null ? { lat: ph.lat, lng: ph.lng, acc: ph.acc ?? null, src: ph.acc == null ? "sekolah" : "gps" } : sk ? { ...sk, acc: null, src: "sekolah" } : null;
     let rec = { ...ph, gs: false, gal: undefined };
-    try {
+    if (!ph.raw) try {
       const img = await createImageBitmap(ph.orig || ph.blob);
       const res = await stamp(img, ph.t, gps, c.p, c.a, { ...c.opts, cover: !ph.orig });
       URL.revokeObjectURL(ph.url);
@@ -1409,7 +1409,27 @@ function currentGps() {
 
 /* opts.cover = true: gambar sumber sudah bercap (foto lama), jadi cap lama ditutup penuh dulu.
    Selain itu, salinan foto TANPA cap ikut disimpan (orig) agar cap bisa dicetak ulang dengan bersih. */
+/* Penanda tersembunyi (komentar JPEG) pada foto yang dicap aplikasi ini, agar bila diunggah ulang dari galeri
+   aplikasi tahu foto itu sudah ber-stamp dan tidak menempel cap kedua. */
+const STAMP_MARK = "KameraRevitSD:stamped";
+async function tagJpeg(blob) {
+  try {
+    const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+    if (head[0] !== 0xFF || head[1] !== 0xD8) return blob;
+    const txt = new TextEncoder().encode(STAMP_MARK), seg = new Uint8Array(4 + txt.length);
+    seg.set([0xFF, 0xFE, (txt.length + 2) >> 8, (txt.length + 2) & 255]); seg.set(txt, 4);
+    return new Blob([blob.slice(0, 2), seg, blob.slice(2)], { type: "image/jpeg" });
+  } catch (e) { return blob; }
+}
+async function hasOwnStamp(file) {
+  try { return new TextDecoder("latin1").decode(await file.slice(0, 65536).arrayBuffer()).includes(STAMP_MARK); } catch (e) { return false; }
+}
 async function stamp(img, takenAt, gps, p, a, opts = {}) {
+  const res = await stampInner(img, takenAt, gps, p, a, opts);
+  res.blob = await tagJpeg(res.blob);
+  return res;
+}
+async function stampInner(img, takenAt, gps, p, a, opts = {}) {
   const sc = Math.min(1, 1920 / Math.max(img.width, img.height));
   const W = Math.round(img.width * sc), H = Math.round(img.height * sc);
   const c = document.createElement("canvas"); c.width = W; c.height = H;
@@ -1513,7 +1533,7 @@ async function stampFull(x, W, H, when, gps, p, a, opts) {
 
 // ---------- Cetak ulang cap untuk foto tanpa koordinat ----------
 const noKoorKeys = () => [...photos.entries()]
-  .filter(([k, ph]) => ph.lat == null && (k.startsWith("#keg|") || inPaket(k))).map(([k]) => k);
+  .filter(([k, ph]) => ph.lat == null && !ph.raw && (k.startsWith("#keg|") || inPaket(k))).map(([k]) => k);
 function renderFix() {
   const n = noKoorKeys().length, sk = schoolKoor();
   $("fixBox").hidden = n === 0;
@@ -1555,7 +1575,7 @@ $("fixBtn").addEventListener("click", async () => {
    Pemeriksaan jarak tidak dilakukan selama koordinat sekolah sendiri dicurigai salah. */
 const wrongLocKeys = () => {
   const sk = koorSuspect() ? null : schoolKoor();
-  return [...photos.entries()].filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.lat != null && !ph.away &&
+  return [...photos.entries()].filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.lat != null && !ph.away && !ph.raw &&
     ((sk && KKA.distanceM({ lat: ph.lat, lng: ph.lng }, sk) > KKA.LIMIT.schoolFar) || (ph.acc != null && ph.acc >= KKA.LIMIT.approx))).map(([k]) => k);
 };
 function renderWrongLoc() {
@@ -1597,7 +1617,7 @@ $("locBtn").addEventListener("click", async e => {
    Tanggal/jam & koordinat asli foto tetap dipakai. */
 const curStyle = () => ((profil.gaya || "lengkap") === "lengkap" ? "lengkap2" : "ringkas"); // lengkap2 = gaya kamera GPS (v1.9)
 const oldStampKeys = () => [...photos.entries()]
-  .filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && ph.sv !== curStyle() && (ph.lat != null || schoolKoor())).map(([k]) => k);
+  .filter(([k, ph]) => (k.startsWith("#keg|") || inPaket(k)) && !ph.raw && ph.sv !== curStyle() && (ph.lat != null || schoolKoor())).map(([k]) => k);
 function renderOldStamp() {
   const keys = oldStampKeys(), n = keys.length;
   const clean = keys.filter(k => photos.get(k).orig).length;
@@ -1641,6 +1661,7 @@ async function retitleKeg(oldF, newCap, btn, days) {
   for (const k of keys) {
     i++; if (btn) btn.textContent = `Memperbarui ${i}/${keys.length}…`;
     const ph = photos.get(k), c = stampCtx(k, newCap);
+    if (ph.raw) { photos.set(k, { ...ph, cap: newCap, gs: false }); persist(k); ok++; continue; } // foto ber-stamp asli: cap tidak dicetak ulang
     const sk = schoolKoor();
     const gps = ph.lat != null ? { lat: ph.lat, lng: ph.lng, acc: ph.acc ?? null, src: ph.acc == null ? (ph.away ? "foto" : "sekolah") : "gps" }
       : ph.away ? null : sk ? { ...sk, acc: null, src: "sekolah" } : null;
@@ -1754,9 +1775,10 @@ $("galMulti").addEventListener("change", async e => {
       const ex = await readExif(f), takenAt = ex && ex.t ? ex.t : takenTime(f), gps = galGps(ex, kegAway);
       const capF = H_RE.test(cap) ? withH(cap, takenAt) : cap; // foto galeri dari hari lain: nomor H mengikuti tanggal fotonya
       const c = stampCtx(key, capF, kegAway);
+      const useRaw = $("kegGalRaw").checked || await hasOwnStamp(f);
       const others = [...photos.entries()].filter(([k]) => k.startsWith("#keg|")).map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: ph.lat, lng: ph.lng }));
       const checks = KKA.runChecks({ info, takenAt, gps, others, allowPortrait: true });
-      const res = await stamp(img, takenAt, gps, c.p, c.a, c.opts);
+      const res = useRaw ? await rawRec(f, takenAt, gps) : await stamp(img, takenAt, gps, c.p, c.a, c.opts);
       photos.set(key, { ...res, hash: info.hash, warn: checks.filter(x => !x.ok && !/dari galeri/.test(x.text)).map(x => x.text), cap: capF, away: kegAway || undefined, synced: false, gs: false, url: URL.createObjectURL(res.blob) });
       persist(key); ok++;
     } catch (err) { fail++; }
@@ -1799,15 +1821,31 @@ async function processFile(f, key, turn, gal) {
       .filter(([k]) => { if (k === key) return false; const o = parseKey(k); return q.keg ? o.keg : !o.keg && o.pid === q.pid && o.st === q.st; })
       .map(([k, ph]) => ({ label: labelOf(k), hash: ph.hash, lat: away ? null : ph.lat, lng: away ? null : ph.lng }));
     const checks = KKA.runChecks({ info, takenAt, gps: gps && away ? { ...gps, away: true } : gps, others, allowPortrait: q.keg });
-    const res = await stamp(img, takenAt, gps, p, a, c.opts);
+    // Foto galeri yang sudah ber-stamp: dari aplikasi ini terdeteksi otomatis; dari aplikasi lain lewat tombol di layar tinjau
+    const own = gal && await hasOwnStamp(f);
+    const useRaw = gal && (own || gal.raw);
+    const res = useRaw ? await rawRec(f, takenAt, gps) : await stamp(img, takenAt, gps, p, a, c.opts);
     const warn = checks.filter(c => !c.ok).map(c => c.text);
     if (pending) URL.revokeObjectURL(pending.url);
-    pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined, away: away || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn, gal };
+    pending = { key, rec: { ...res, hash: info.hash, warn, cap: cap || undefined, away: away || undefined }, url: URL.createObjectURL(res.blob), raw: f, turn, gal, info, takenAt, gps, isRaw: !!useRaw };
     showReview(p, a, checks);
+    if (own) toast("Foto ini sudah ber-stamp dari Kamera Revit SD — disimpan apa adanya, tanpa cap tambahan.");
   } catch (err) {
     toast("Foto tidak bisa dibaca. Coba ambil ulang atau pilih format JPG/PNG.");
   }
 }
+// Foto yang sudah ber-stamp: disimpan apa adanya (tanpa cap baru); tanggal & GPS dari foto/EXIF
+async function rawRec(file, takenAt, gps) {
+  const blob = /jpe?g/i.test(file.type) || !file.type ? new Blob([file], { type: "image/jpeg" }) : file;
+  return { blob, t: takenAt, lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, acc: gps ? gps.acc ?? null : null, sv: "asli", raw: true };
+}
+// Layar tinjau (foto galeri): pilih "sudah ada stamp" ↔ "tambahkan stamp"
+$("rRawBtn").addEventListener("click", async () => {
+  if (!pending || !pending.gal) return;
+  const { raw, key, turn, gal } = pending;
+  URL.revokeObjectURL(pending.url); pending = null;
+  processFile(raw, key, turn, { ...gal, raw: !gal.raw });
+});
 // Bila foto terlanjur menyamping, putar 90° lalu periksa ulang
 $("rRotate").addEventListener("click", () => {
   if (!pending) return;
@@ -1822,6 +1860,8 @@ function showReview(p, a, checks) {
   const q = parseKey(pending.key);
   $("rTitle").textContent = q.keg ? `Kegiatan — ${p.nama}` : `${a.l} — ${p.nama}${q.st ? " · " + q.st + "%" : ""}`;
   $("rImg").src = pending.url;
+  $("rRawBtn").hidden = !pending.gal;
+  $("rRawBtn").textContent = pending.isRaw ? "🏷️ Tambahkan stamp" : "🏷️ Foto sudah ada stamp (simpan apa adanya)";
   $("rChecks").innerHTML = checks
     .sort((x, y) => x.ok - y.ok)
     .sort((x, y) => (y.block ? 1 : 0) - (x.block ? 1 : 0))
@@ -2131,7 +2171,7 @@ async function cloudSync(manual) {
         const blob = await GD.download(f.id);
         if (loc && loc.url) URL.revokeObjectURL(loc.url);
         photos.set(k, { blob, t: +a.t || Date.now(), lat: numOr(a.lat), lng: numOr(a.lng), acc: numOr(a.acc), sv: a.sv || undefined, cap: a.cap || undefined,
-          gid: f.id, gmod: f.modifiedTime, gs: true, gpath: a.gp || undefined, away: a.aw === "1" || undefined, url: URL.createObjectURL(blob) });
+          gid: f.id, gmod: f.modifiedTime, gs: true, gpath: a.gp || undefined, away: a.aw === "1" || undefined, raw: a.raw === "1" || undefined, url: URL.createObjectURL(blob) });
         persist(k); down++; paint();
       } else if (a.kind === "video") {
         const loc = videos.get(k);
@@ -2198,7 +2238,7 @@ async function cloudSync(manual) {
     async function upPhoto(k, ph) {
       const q = parseKey(k);
       const path = q.keg ? `Kegiatan/${kegFolder(ph)}` : `FOTO_REVITSD_${q.st}/${clean(paket.find(p => p.id === q.pid).nama)}`;
-      const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90), gp: path.slice(0, 100), aw: ph.away ? "1" : "" };
+      const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90), gp: path.slice(0, 100), aw: ph.away ? "1" : "", raw: ph.raw ? "1" : "" };
       const meta = { name: fname(k), appProperties: props };
       let r = null;
       if (ph.gid) {
