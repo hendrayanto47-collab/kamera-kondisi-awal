@@ -95,7 +95,7 @@
   }
   /* Gambar peta persegi berukuran s×s di (x0,y0), titik lokasi di tengah dengan pin merah.
      Bila ubin tidak tersedia (offline & belum tersimpan), tampil kotak gelap dengan pin. */
-  async function drawMap(ctx, x0, y0, s, lat, lng, radius) {
+  async function drawMap(ctx, x0, y0, s, lat, lng, radius, quick) {
     const p = worldPx(lat, lng);
     const span = 300;                      // lebar area peta dalam piksel dunia (zoom 17 ≈ 0,9 m/px di khatulistiwa)
     const k = s / span;
@@ -110,8 +110,11 @@
     const want = [];
     for (let tx = Math.floor(left / TILE); tx <= Math.floor((left + span) / TILE); tx++)
       for (let ty = Math.floor(top / TILE); ty <= Math.floor((top + span) / TILE); ty++) want.push([tx, ty]);
-    const got = await Promise.race([Promise.all(want.map(([tx, ty]) => getTile(tx, ty))), new Promise(r => setTimeout(() => r(null), 4500))])
-      || want.map(([tx, ty]) => mem.get(tileURL(tx, ty)) || null);
+    // quick (cap video, diperbarui tiap detik): pakai ubin yang sudah ada saja, ambil sisanya di latar tanpa menunggu
+    const now = () => want.map(([tx, ty]) => mem.get(tileURL(tx, ty)) || null);
+    let got;
+    if (quick) { got = now(); if (got.some(b => !b) && !drawMap.bg) { drawMap.bg = true; Promise.all(want.map(([tx, ty]) => getTile(tx, ty))).finally(() => { drawMap.bg = false; }); } }
+    else got = await Promise.race([Promise.all(want.map(([tx, ty]) => getTile(tx, ty))), new Promise(r => setTimeout(() => r(null), 4500))]) || now();
     let drawn = 0;
     want.forEach(([tx, ty], i) => {
       const bm = got[i]; if (!bm) return;
@@ -191,7 +194,7 @@
     const badgeH = 22 * u;
     if (d.cover) { ctx.fillStyle = "rgb(18,20,19)"; ctx.fillRect(0, top - badgeH, W, H - top + badgeH); }
     // peta
-    await drawMap(ctx, m, H - m - S, S, d.lat, d.lng, 8 * u);
+    await drawMap(ctx, m, H - m - S, S, d.lat, d.lng, 8 * u, d.quick);
     // kartu teks
     ctx.fillStyle = "rgba(0,0,0,.58)"; roundRect(ctx, cx, top, cw, cardH, 10 * u); ctx.fill();
     // label aplikasi di pojok kanan atas kartu

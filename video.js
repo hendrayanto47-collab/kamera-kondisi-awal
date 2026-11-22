@@ -145,14 +145,14 @@
       if (g && window.KKAGeo) {
         const addr = o.address ? o.address(g) : "";
         await KKAGeo.drawCard(x, W, oh, { u: H / 720, lat: g.lat, lng: g.lng, acc: g.acc, src: g.src, addr, fallbackHead: addr || "Indonesia",
-          when: now, seconds: true, note: `${o.title} · ${o.idLine} · Video dokumentasi revitalisasi`, app: "Kamera Revit SD" });
+          when: now, seconds: true, quick: true, note: `${o.title} · ${o.idLine} · Video dokumentasi revitalisasi`, app: "Kamera Revit SD" });
       } else {
         x.fillStyle = "rgba(0,0,0,.6)"; x.fillRect(14, oh - 60, W - 28, 46);
         x.fillStyle = "#fff"; x.font = "600 18px Arial, sans-serif"; x.fillText(`${o.title} · GPS tidak tersedia · ${now.toLocaleString("id-ID")}`, 28, oh - 30);
       }
       const show = rec.overlay && rec.overlay !== cv ? rec.overlay : document.createElement("canvas");
       rec.ovBuf = show; rec.overlay = cv;
-    } catch (e) {}
+    } catch (e) {} // cap gagal diperbarui sesaat tidak menghentikan rekaman
     if (rec) rec.busyOverlay = false;
   }
 
