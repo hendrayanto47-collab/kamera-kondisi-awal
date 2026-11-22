@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.17.4 · 22 Nov 2026";
+const APP_VERSION = "2.17.5 · 23 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -2216,7 +2216,7 @@ async function cloudSync(manual) {
   if (!npsn || !profil.nama) { cloudMsg = "Isi nama sekolah dan NPSN dulu."; renderCloud(); if (manual) toast(cloudMsg); return; }
   cloudBusy = true; cloudProg = "Memeriksa Drive…"; renderCloud();
   let wake = null; try { if (navigator.wakeLock) wake = await navigator.wakeLock.request("screen"); } catch (e) {}
-  let up = 0, down = 0, gone = 0;
+  let up = 0, down = 0, gone = 0, kept = 0;
   try {
     if (!GD.email) await GD.me();
     // Kunci sinkron = akun Google + NPSN. Bila akun atau sekolah berganti: mulai folder baru, semua dikirim ulang
@@ -2298,16 +2298,21 @@ async function cloudSync(manual) {
     await Promise.all([0, 1, 2].map(async () => { while (pulls.length) { const [k, e] = pulls.shift(); await pullOne(k, e); } }));
 
     // ---- 3) Yang sudah dihapus di HP lain ikut dihapus di sini
-    // Hanya dihapus bila file Drive-nya BENAR-BENAR ada di Sampah akun ini. File yang tidak dikenal akun ini (404)
-    // tidak menghapus apa pun: fotonya dikirim ulang ke akun ini.
+    // Hanya dihapus bila file Drive-nya ada di Sampah DAN dihapus lewat aplikasi (tanda del=1).
+    // File yang dibuang/dirapikan langsung di Drive TIDAK menghapus foto di HP: fotonya dikirim ulang.
+    // File yang tidak dikenal akun ini (404) juga tidak menghapus apa pun: dikirim ulang ke akun ini.
     const ids = new Set(remote.map(f => f.id));
     const cand = [...[...photos].map(([k, r]) => ["p", k, r]), ...[...videos].map(([k, r]) => ["v", k, r])]
       .filter(([, , r]) => r.gs && r.gid && !ids.has(r.gid));
     for (const [kind, k, r] of cand) {
-      let trashed = false;
-      try { trashed = !!(await GD.stat(r.gid)).trashed; }
-      catch (e) { if (e instanceof GD.AuthError) throw e; if (e.status === 404) { r.gs = false; r.gid = r.gidP = undefined; kind === "p" ? persist(k) : persistVid(k); } continue; }
+      let trashed = false, byApp = false;
+      try { const st = await GD.stat(r.gid); trashed = !!st.trashed; byApp = !!(st.appProperties && st.appProperties.del === "1"); }
+      catch (e) { if (e instanceof GD.AuthError) throw e; if (e.status === 404 && r.blob) { r.gs = false; r.gid = r.gidP = undefined; kind === "p" ? persist(k) : persistVid(k); } continue; }
       if (!trashed) continue;
+      if (!byApp) { // dibuang langsung di Drive: foto/video di HP tetap disimpan dan dikirim ulang sebagai file baru
+        if (r.blob) { r.gs = false; r.gid = r.gidP = undefined; r.gpath = undefined; kind === "p" ? persist(k) : persistVid(k); kept++; }
+        continue;
+      }
       if (r.url) URL.revokeObjectURL(r.url);
       (kind === "p" ? photos : videos).delete(k); dbPut(k, null); gone++;
     }
@@ -2401,7 +2406,7 @@ async function cloudSync(manual) {
       lsSet("kka-gstateh", h); lsSet("kka-gstatet", r.modifiedTime);
     }
     cloudLast = Date.now();
-    cloudMsg = up || down || gone ? [up && `${up} terkirim`, down && `${down} baru dari HP lain`, gone && `${gone} dihapus`].filter(Boolean).join(" · ") : "Sudah sama dengan Drive";
+    cloudMsg = up || down || gone || kept ? [up && `${up} terkirim`, down && `${down} baru dari HP lain`, gone && `${gone} dihapus`, kept && `${kept} yang dibuang di Drive dikirim ulang (masih ada di HP)`].filter(Boolean).join(" · ") : "Sudah sama dengan Drive";
     if (down) toast(`${down} foto/video baru dari HP lain.`);
     else if (manual) toast(cloudMsg + ".");
   } catch (e) {

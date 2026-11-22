@@ -132,10 +132,10 @@
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta || {}) });
   }
   const patch = (id, meta) => req(`${API}/files/${id}?fields=id,modifiedTime`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta) });
-  // Status satu file: { trashed } — 404 berarti file bukan milik akun ini / sudah dihapus permanen
-  const stat = id => req(`${API}/files/${id}?fields=id,trashed`);
+  // Status satu file: { trashed, appProperties.del } — 404 berarti file bukan milik akun ini / sudah dihapus permanen
+  const stat = id => req(`${API}/files/${id}?fields=id,trashed,appProperties`);
   const download = id => req(`${API}/files/${id}?alt=media`, {}, true).then(r => r.blob());
-  const trash = id => req(`${API}/files/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: '{"trashed":true}' })
+  const trash = id => req(`${API}/files/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: '{"trashed":true,"appProperties":{"del":"1"}}' }) // del=1: dihapus lewat aplikasi (bukan dirapikan manual di Drive)
     .catch(e => { if (e.status !== 404) throw e; });
   async function makePublic(id) {
     await req(`${API}/files/${id}/permissions?fields=id`, { method: "POST", headers: { "Content-Type": "application/json" },
