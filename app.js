@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.16.1 · 22 Nov 2026";
+const APP_VERSION = "2.17.0 · 22 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -2306,7 +2306,10 @@ async function cloudSync(manual) {
     if (down) toast(`${down} foto/video baru dari HP lain.`);
     else if (manual) toast(cloudMsg + ".");
   } catch (e) {
-    cloudMsg = e instanceof GD.AuthError ? "Sesi Google berakhir — ketuk Masuk lagi." : "Gagal sinkron: " + e.message;
+    const net = /fetch|network|timeout|abort|Load failed/i.test(e.message || "") || e.name === "TimeoutError" || e.name === "AbortError";
+    cloudMsg = e instanceof GD.AuthError ? "Sesi Google berakhir — ketuk Masuk lagi."
+      : net ? "Sinyal lemah/terputus — foto aman di HP, dikirim otomatis saat sinyal kembali." : "Gagal sinkron: " + e.message;
+    if (net) cloudSoon(60000); // coba lagi otomatis
     if (manual) toast(cloudMsg);
   } finally {
     cloudBusy = false; cloudProg = ""; renderCloud(); render();

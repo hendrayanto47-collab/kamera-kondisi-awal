@@ -55,7 +55,9 @@
   class AuthError extends Error {}
   async function req(url, opt = {}, raw) {
     if (!valid()) throw new AuthError("Perlu masuk Google lagi.");
-    const r = await fetch(url, { ...opt, headers: { Authorization: "Bearer " + tok.access, ...(opt.headers || {}) } });
+    // batas waktu agar sinkron tidak tertahan saat sinyal putus-sambung (unduhan besar diberi waktu lebih)
+    const ms = opt.timeout || (raw && /alt=media/.test(url) ? 180000 : 30000);
+    const r = await fetch(url, { ...opt, signal: AbortSignal.timeout ? AbortSignal.timeout(ms) : undefined, headers: { Authorization: "Bearer " + tok.access, ...(opt.headers || {}) } });
     if (r.status === 401) { tok.exp = 0; saveTok(); throw new AuthError("Perlu masuk Google lagi."); }
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
@@ -118,7 +120,8 @@
       body: JSON.stringify(meta),
     }, true);
     const loc = init.headers.get("Location");
-    const r = await fetch(loc, { method: "PUT", headers: { "Content-Type": blob.type || "application/octet-stream" }, body: blob });
+    const ms = 60000 + Math.round(blob.size / 1024 / 1024) * 20000; // 60 dtk + 20 dtk per MB
+    const r = await fetch(loc, { method: "PUT", signal: AbortSignal.timeout ? AbortSignal.timeout(ms) : undefined, headers: { "Content-Type": blob.type || "application/octet-stream" }, body: blob });
     if (!r.ok) throw new Error("Unggah gagal (" + r.status + ")");
     return r.json();
   }

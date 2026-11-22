@@ -47,7 +47,7 @@
     if (!navigator.onLine) return addrCache[cell] || null;
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=id&lat=${lat}&lon=${lng}`;
     try {
-      const r = await fetch(url, { headers: { Accept: "application/json" } });
+      const r = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined });
       if (!r.ok) return addrCache[cell] || null;
       const s = formatAddr(await r.json());
       if (s) { addrCache[cell] = s; try { localStorage.setItem(ADDR_KEY, JSON.stringify(addrCache)); } catch (e) {} }
@@ -79,7 +79,7 @@
       const hit = await c.match(url);
       if (hit) blob = await hit.blob();
       else if (navigator.onLine) {
-        const r = await fetch(url, { mode: "cors" });
+        const r = await fetch(url, { mode: "cors", signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined }); // sinyal lemah: jangan menunggu lama
         if (r.ok) { await c.put(url, r.clone()); blob = await r.blob(); }
       }
     } catch (e) {}
@@ -106,15 +106,18 @@
     else ctx.rect(x0, y0, s, s);
     ctx.clip();
     ctx.fillStyle = "#2b3330"; ctx.fillRect(x0, y0, s, s);
+    // ubin diambil bersamaan, maksimal ±4 detik total (sinyal lemah: peta kosong berkisi, foto tetap jadi)
+    const want = [];
+    for (let tx = Math.floor(left / TILE); tx <= Math.floor((left + span) / TILE); tx++)
+      for (let ty = Math.floor(top / TILE); ty <= Math.floor((top + span) / TILE); ty++) want.push([tx, ty]);
+    const got = await Promise.race([Promise.all(want.map(([tx, ty]) => getTile(tx, ty))), new Promise(r => setTimeout(() => r(null), 4500))])
+      || want.map(([tx, ty]) => mem.get(tileURL(tx, ty)) || null);
     let drawn = 0;
-    for (let tx = Math.floor(left / TILE); tx <= Math.floor((left + span) / TILE); tx++) {
-      for (let ty = Math.floor(top / TILE); ty <= Math.floor((top + span) / TILE); ty++) {
-        const bm = await getTile(tx, ty);
-        if (!bm) continue;
-        ctx.drawImage(bm, x0 + (tx * TILE - left) * k, y0 + (ty * TILE - top) * k, TILE * k, TILE * k);
-        drawn++;
-      }
-    }
+    want.forEach(([tx, ty], i) => {
+      const bm = got[i]; if (!bm) return;
+      ctx.drawImage(bm, x0 + (tx * TILE - left) * k, y0 + (ty * TILE - top) * k, TILE * k, TILE * k);
+      drawn++;
+    });
     if (!drawn) { // kisi sederhana agar tetap terbaca sebagai peta
       ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.lineWidth = Math.max(1, s / 120);
       for (let i = 1; i < 4; i++) { const d = s * i / 4; ctx.beginPath(); ctx.moveTo(x0 + d, y0); ctx.lineTo(x0 + d, y0 + s); ctx.moveTo(x0, y0 + d); ctx.lineTo(x0 + s, y0 + d); ctx.stroke(); }
