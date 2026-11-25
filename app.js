@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.19.0 · 26 Nov 2026";
+const APP_VERSION = "2.19.1 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -611,6 +611,7 @@ function renderPaket(st) {
             <span class="cam">${ph ? "Lihat" : "Ambil foto"}</span>
             ${ph && ph.bad ? `<span class="badph">Foto rusak — pilih ulang lewat Galeri</span>` : ph && cloudOn() ? `<span class="sync${ph.gs ? " ok" : ""}">${ph.gs ? "☁ Drive" : "Antre"}</span>` : ""}
             ${ph && ph.gal ? `<span class="galmark" title="Sudah disimpan ke galeri">📥 Galeri</span>` : ""}
+            ${ph && ph.orig && !ph.raw ? `<span class="v2mark" title="Tersimpan dengan stamp dan tanpa stamp">2 versi</span>` : ""}
             ${ph && ph.warn && ph.warn.length ? `<span class="warnb" title="${esc(ph.warn.join(" "))}">${ph.warn.length} catatan</span>` : ""}</button>
           <div class="slab"><span>${a.l}</span><span class="slab-acts">${ph
             ? `<button type="button" data-retake="${esc(k)}">Ulangi</button>`
@@ -652,7 +653,7 @@ function renderKeg() {
     <div class="keggrid">${ks.map(k => {
     const ph = photos.get(k);
     return `<figure class="kegitem"><button type="button" class="shot has" data-view-k="${esc(k)}" aria-label="Lihat ${esc(ph.cap || "foto kegiatan")}">
-      <img src="${ph.url}" alt="">${ph.bad ? '<span class="badph">Foto rusak — hapus lalu impor ulang</span>' : ""}${ph.up || ph.gs ? '<span class="sync ok">✓ Drive</span>' : ""}${ph.gal ? '<span class="galmark">📥 Galeri</span>' : ""}</button>
+      <img src="${ph.url}" alt="">${ph.bad ? '<span class="badph">Foto rusak — hapus lalu impor ulang</span>' : ""}${ph.up || ph.gs ? '<span class="sync ok">✓ Drive</span>' : ""}${ph.gal ? '<span class="galmark">📥 Galeri</span>' : ""}${ph && ph.orig && !ph.raw ? `<span class="v2mark" title="Tersimpan dengan stamp dan tanpa stamp">2 versi</span>` : ""}</button>
       <figcaption><small>${tgl(ph.t)} ${jam(ph.t)}${ph.away ? " · 📍 luar sekolah" : ""}</small></figcaption></figure>`;
   }).join("")}</div></section>`).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
@@ -1991,7 +1992,7 @@ $("rSave").addEventListener("click", () => {
   pending = null;
   $("review").hidden = true;
   persist(key); render();
-  toast(`${labelOf(key)} tersimpan (${Math.round(rec.blob.size / 1024)} KB)`);
+  toast(`${labelOf(key)} tersimpan${rec.orig && !rec.raw ? " — 2 versi: dengan & tanpa stamp" : ""}`);
   if (autoGal && !IS_IOS) { download(fname(key), rec.blob, true); photos.get(key).gal = Date.now(); persist(key); }
   cloudSoon(1500);
 });
@@ -2074,7 +2075,22 @@ function download(filename, blob, quiet) {
 }
 
 let vKey = null;
-function openViewer(k) { vKey = k; $("vImg").src = photos.get(k).url; $("vImg").alt = fname(k); $("vSavePlain").hidden = !phPlainItem(k); $("viewer").hidden = false; }
+let vPlainUrl = null, vShowPlain = false;
+function openViewer(k) {
+  vKey = k; vShowPlain = false; if (vPlainUrl) { URL.revokeObjectURL(vPlainUrl); vPlainUrl = null; }
+  $("vImg").src = photos.get(k).url; $("vImg").alt = fname(k);
+  const two = !!phPlainItem(k);
+  $("vSavePlain").hidden = !two; $("vFlip").hidden = !two; $("vFlip").textContent = "👁 Lihat tanpa stamp";
+  $("viewer").hidden = false;
+}
+// Bandingkan dua versi foto: dengan stamp ↔ tanpa stamp
+$("vFlip").onclick = () => {
+  const ph = photos.get(vKey); if (!ph || !ph.orig) return;
+  vShowPlain = !vShowPlain;
+  if (vShowPlain && !vPlainUrl) vPlainUrl = URL.createObjectURL(ph.orig);
+  $("vImg").src = vShowPlain ? vPlainUrl : ph.url;
+  $("vFlip").textContent = vShowPlain ? "👁 Lihat dengan stamp" : "👁 Lihat tanpa stamp";
+};
 $("vClose").onclick = () => ($("viewer").hidden = true);
 $("viewer").addEventListener("click", e => { if (e.target.id === "viewer") $("viewer").hidden = true; });
 document.addEventListener("keydown", e => {
