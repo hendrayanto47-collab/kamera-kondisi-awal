@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.17.5 · 23 Nov 2026";
+const APP_VERSION = "2.18.0 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -114,7 +114,7 @@ function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
   dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, gal: v.gal, remote: v.remote, size: v.size, sizeP: v.sizeP, hasPlain: v.hasPlain, skip: v.skip, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal", "raw"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal", "raw", "gidP", "galP"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -647,6 +647,7 @@ function renderKeg() {
     <div class="keghead"><b>📁 ${esc(f)}</b><small>${ks.length} foto</small>
       <button class="btn" type="button" data-kegshare="${esc(f)}">Unggah ke Drive</button>
       <button class="btn" type="button" data-keggal="${esc(f)}">Simpan ke galeri</button>
+      <button class="btn" type="button" data-kegplain="${esc(f)}">Simpan tanpa stamp</button>
       <button class="btn ghost" type="button" data-kegren="${esc(f)}">✏️ Ubah judul</button></div>
     <div class="keggrid">${ks.map(k => {
     const ph = photos.get(k);
@@ -758,6 +759,8 @@ $("kegList").addEventListener("click", e => {
   }
   const gg = e.target.closest("[data-keggal]");
   if (gg) { const f = gg.dataset.keggal; saveToGallery(kegKeys().filter(k => kegFolder(photos.get(k)) === f).map(phItem), `Kegiatan - ${f}`); }
+  const gp = e.target.closest("[data-kegplain]");
+  if (gp) { const f = gp.dataset.kegplain; savePlain(kegKeys().filter(k => kegFolder(photos.get(k)) === f), `Kegiatan - ${f} (tanpa stamp)`); }
 });
 
 // ---------- Aksi pada daftar ----------
@@ -1987,7 +1990,7 @@ $("rSave").addEventListener("click", () => {
   const old = photos.get(key);
   if (old) URL.revokeObjectURL(old.url);
   const prevPath = old ? (old.synced ? old.path : old.prevPath) || null : null;
-  photos.set(key, { ...rec, up: undefined, synced: false, gs: false, gid: old ? old.gid : undefined, path: null, prevPath, url });
+  photos.set(key, { ...rec, up: undefined, synced: false, gs: false, gid: old ? old.gid : undefined, gidP: old ? old.gidP : undefined, path: null, prevPath, url });
   pending = null;
   $("review").hidden = true;
   persist(key); render();
@@ -2013,22 +2016,31 @@ const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platfo
 let galQ = null;
 // Item galeri membawa rujukan rekaman agar yang sudah pernah disimpan tidak tersimpan dua kali
 const phItem = k => { const ph = photos.get(k); return { name: fname(k), blob: ph.blob, t: ph.t, ref: { kind: "p", k } }; };
+// Versi tanpa stamp (foto asli yang disimpan saat memotret); null bila tidak ada (mis. foto galeri yang sudah ber-stamp)
+const phPlainItem = k => { const ph = photos.get(k); return ph && ph.orig && !ph.raw ? { name: fname(k).replace(/\.jpg$/, " - tanpa stamp.jpg"), blob: ph.orig, t: ph.t, ref: { kind: "p", k, plain: true } } : null; };
+function savePlain(keys, label) {
+  const items = keys.map(phPlainItem).filter(Boolean), miss = keys.length - items.length;
+  if (!items.length) return toast(keys.length === 1 ? "Foto ini tidak punya versi tanpa stamp (dari galeri yang sudah ber-stamp, atau dari HP lain yang belum diperbarui)." : "Foto-foto ini tidak punya versi tanpa stamp.");
+  saveToGallery(items, label);
+  if (miss) setTimeout(() => toast(`${miss} foto dilewati: tidak punya versi tanpa stamp (dari galeri yang sudah ber-stamp, atau belum terambil dari HP lain).`), 2500);
+}
 const vidItems = (k, name) => { const v = videos.get(k);
   return [{ name, blob: v.blob, t: v.t, ref: { kind: "v", k } }, ...(v.plain ? [{ name: name.replace(/(\.\w+)$/, " - polos$1"), blob: v.plain, t: v.t, ref: { kind: "v", k } }] : [])]; };
 const recOf = r => (r.kind === "p" ? photos.get(r.k) : videos.get(r.k));
 function markGal(items) {
   const now = Date.now(), done = new Set();
-  for (const it of items) { if (!it.ref) continue; const id = it.ref.kind + it.ref.k; if (done.has(id)) continue; done.add(id);
-    const r = recOf(it.ref); if (!r) continue; r.gal = now; it.ref.kind === "p" ? persist(it.ref.k) : persistVid(it.ref.k); }
+  for (const it of items) { if (!it.ref) continue; const id = it.ref.kind + it.ref.k + (it.ref.plain ? "P" : ""); if (done.has(id)) continue; done.add(id);
+    const r = recOf(it.ref); if (!r) continue; r[it.ref.plain ? "galP" : "gal"] = now; it.ref.kind === "p" ? persist(it.ref.k) : persistVid(it.ref.k); }
   render();
 }
 function saveToGallery(all, label, force) {
   if (!all.length) return toast("Belum ada file untuk disimpan.");
-  const items = force ? all : all.filter(it => !(it.ref && (recOf(it.ref) || {}).gal));
+  const galOf = it => (recOf(it.ref) || {})[it.ref.plain ? "galP" : "gal"];
+  const items = force ? all : all.filter(it => !(it.ref && galOf(it)));
   const skipped = all.length - items.length;
   if (!items.length) {
-    const r = all[0].ref && recOf(all[0].ref);
-    return toast(all.length === 1 && r ? `Sudah pernah disimpan ke galeri (${tgl(r.gal)} ${jam(r.gal)}).` : `Semua (${all.length}) sudah pernah disimpan ke galeri.`,
+    const g0 = all[0].ref && galOf(all[0]);
+    return toast(all.length === 1 && g0 ? `Sudah pernah disimpan ke galeri (${tgl(g0)} ${jam(g0)}).` : `Semua (${all.length}) sudah pernah disimpan ke galeri.`,
       "Simpan ulang", () => saveToGallery(all, label, true));
   }
   const files = items.map(it => new File([it.blob], it.name, { type: it.blob.type || (/\.mp4$/i.test(it.name) ? "video/mp4" : "image/jpeg"), lastModified: it.t || Date.now() }));
@@ -2065,7 +2077,7 @@ function download(filename, blob, quiet) {
 }
 
 let vKey = null;
-function openViewer(k) { vKey = k; $("vImg").src = photos.get(k).url; $("vImg").alt = fname(k); $("viewer").hidden = false; }
+function openViewer(k) { vKey = k; $("vImg").src = photos.get(k).url; $("vImg").alt = fname(k); $("vSavePlain").hidden = !phPlainItem(k); $("viewer").hidden = false; }
 $("vClose").onclick = () => ($("viewer").hidden = true);
 $("viewer").addEventListener("click", e => { if (e.target.id === "viewer") $("viewer").hidden = true; });
 document.addEventListener("keydown", e => {
@@ -2074,6 +2086,7 @@ document.addEventListener("keydown", e => {
   if (!$("review").hidden) closeReview();
 });
 $("vSave").onclick = () => saveToGallery([phItem(vKey)], "Simpan foto");
+$("vSavePlain").onclick = () => savePlain([vKey], "Simpan foto tanpa stamp");
 $("galAllBtn").onclick = () => saveToGallery(viewKeys().map(phItem),
   screen === "kegiatan" ? "Foto kegiatan" : stageName(view));
 $("vShare").onclick = () => shareKeys([vKey], labelOf(vKey));
@@ -2257,6 +2270,14 @@ async function cloudSync(manual) {
     for (const [k, e] of byK) { const a = e.main && e.main.appProperties; if (!a) continue;
       if (a.kind === "photo" ? !(photos.get(k) && photos.get(k).gid === e.main.id) : !videos.get(k)) pullTotal++; }
     const pullOne = async (k, e) => {
+      await pullMain(k, e);
+      // versi tanpa stamp foto kegiatan dari HP lain (kecil; diambil sekalian)
+      const ph = photos.get(k), fp = e.plain;
+      if (fp && ph && fp.appProperties.kind === "photo" && !ph.raw && ph.gidP !== fp.id && ph.gid === (e.main && e.main.id)) {
+        try { ph.orig = await GD.download(fp.id); ph.gidP = fp.id; persist(k); } catch (er) { if (er instanceof GD.AuthError) throw er; }
+      }
+    };
+    const pullMain = async (k, e) => {
       const f = e.main; if (!f) return; const a = f.appProperties;
       if (a.kind === "photo") {
         if (!photos.has(k)) { // file yang sama pindah kunci di HP lain (mis. tahap 4% → 5%): ganti kunci di sini juga
@@ -2333,9 +2354,11 @@ async function cloudSync(manual) {
       if (ph.gs && ph.gid && k.startsWith("#keg|") && ph.gpath !== `Kegiatan/${kegFolder(ph)}`) { // pindahkan ke folder judulnya
         jobs.push({ rank: 1, run: async () => { const path = `Kegiatan/${kegFolder(ph)}`;
           try { const mv = await GD.move(ph.gid, await F(path)); if (mv && mv.modifiedTime) ph.gmod = mv.modifiedTime; } catch (e) { if (e.status !== 404) throw e; }
+          if (ph.gidP || ph.orig) await upPlain(k, ph);
           ph.gpath = path; persist(k); } });
         continue;
       }
+      if (ph.gs && k.startsWith("#keg|") && ph.orig && !ph.raw && !ph.gidP) { jobs.push({ rank: 3, run: () => upPlain(k, ph) }); continue; }
       if (ph.gs || ph.bad || !(inPaket(k) || k.startsWith("#keg|"))) continue;
       jobs.push({ rank: 1, run: () => upPhoto(k, ph) });
     }
@@ -2356,9 +2379,22 @@ async function cloudSync(manual) {
         } catch (e) { if (e.status !== 404) throw e; }
       }
       if (!r) r = await GD.put(ph.blob, { ...meta, parents: [await F(path)], mimeType: "image/jpeg" });
+      if (q.keg) await upPlain(k, ph, props, true);
       const cur = photos.get(k);
       if (cur === ph) { ph.gid = r.id; ph.gmod = r.modifiedTime; ph.gs = true; ph.gpath = path; persist(k); }
       else if (cur && !cur.gid) { cur.gid = r.id; persist(k); } // diganti saat sedang dikirim: versi baru akan memperbarui file yang sama
+    }
+    /* Foto kegiatan: versi tanpa stamp ikut dikirim ke "Kegiatan (tanpa stamp)/<judul>" agar HP lain juga bisa mengunduhnya */
+    async function upPlain(k, ph, props, content) {
+      if (!ph.orig || ph.raw) return;
+      const pathP = `Kegiatan (tanpa stamp)/${kegFolder(ph)}`;
+      const metaP = { name: fname(k).replace(/\.jpg$/, " - tanpa stamp.jpg"), appProperties: { ...(props || { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), cap: sv(ph.cap).slice(0, 90) }), var: "plain", gp: pathP.slice(0, 100) } };
+      let done = false;
+      if (ph.gidP) {
+        try { content ? await GD.put(ph.orig, metaP, ph.gidP) : await GD.patch(ph.gidP, metaP); await GD.move(ph.gidP, await F(pathP)); done = true; } catch (e) { if (e.status !== 404) throw e; }
+      }
+      if (!done) ph.gidP = (await GD.put(ph.orig, { ...metaP, parents: [await F(pathP)], mimeType: "image/jpeg" })).id;
+      persist(k);
     }
     async function upVideoMeta(k, v) { // label sudut berubah: perbarui nama file & keterangan di Drive
       const p = paket.find(x => x.id === v.room);
