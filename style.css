@@ -401,3 +401,8 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .stgeditbox{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
 .stgeditbox label{display:flex;gap:6px;align-items:center;flex:1 1 100%;font-size:14px}
 .stgeditbox input{width:80px;font:700 16px inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+
+/* Video bebas: ganti judul & pilihan video gabungan */
+.vren{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.vren input{flex:1 1 180px;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);font:inherit;background:var(--surface);color:inherit}
+.vmix{display:flex;gap:6px;align-items:center;margin-top:4px;font-size:13px}
