@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.21.1 · 26 Nov 2026";
+const APP_VERSION = "2.21.2 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -649,6 +649,7 @@ function renderKeg() {
       <button class="btn" type="button" data-kegshare="${esc(f)}">Unggah ke Drive</button>
       <button class="btn" type="button" data-keggal="${esc(f)}">Simpan ke galeri</button>
       <button class="btn" type="button" data-kegplain="${esc(f)}">Simpan tanpa stamp</button>
+      <button class="btn" type="button" data-kegvid="${esc(f)}">🎞️ Jadikan video</button>
       <button class="btn ghost" type="button" data-kegren="${esc(f)}">✏️ Ubah judul</button></div>
     <div class="keggrid">${ks.map(k => {
     const ph = photos.get(k);
@@ -760,6 +761,8 @@ $("kegList").addEventListener("click", e => {
   }
   const gg = e.target.closest("[data-keggal]");
   if (gg) { const f = gg.dataset.keggal; saveToGallery(kegKeys().filter(k => kegFolder(photos.get(k)) === f).map(phItem), `Kegiatan - ${f}`); }
+  const gv = e.target.closest("[data-kegvid]");
+  if (gv) kegToVideo([gv.dataset.kegvid]);
   const gp = e.target.closest("[data-kegplain]");
   if (gp) { const f = gp.dataset.kegplain; savePlain(kegKeys().filter(k => kegFolder(photos.get(k)) === f), `Kegiatan - ${f} (tanpa stamp)`); }
 });
@@ -1452,13 +1455,21 @@ function updateEstimate() {
   $("mkBtn").disabled = !n;
 }
 // Dari layar Kegiatan langsung ke pembuat video dengan isi "Foto kegiatan"
-$("kegToVid").addEventListener("click", () => {
+// only: daftar judul yang dicentang (tombol per judul), atau semua judul
+function kegToVideo(only) {
   if (!kegKeys().length) return toast("Belum ada foto kegiatan.");
   goScreen("video");
-  $("mkScope").value = "keg"; updateEstimate();
+  $("mkScope").value = "keg";
+  if (only) {
+    $("mkKeg").querySelectorAll("input").forEach(i => (i.checked = only.includes(i.value)));
+    $("mkTitle").value = only.length === 1 ? only[0] : "";
+  } else $("mkKeg").querySelectorAll("input").forEach(i => (i.checked = true));
+  updateEstimate();
   setTimeout(() => { $("mkScope").closest(".card-s").scrollIntoView({ behavior: "smooth", block: "start" }); }, 50);
-  toast("Isi video sudah dipilih: Foto kegiatan. Centang judul yang mau dipakai, lalu ketuk Buat video.");
-});
+  toast(only && only.length === 1 ? `Video dari foto "${only[0]}". Pilih format (tegak untuk TikTok/Reels/Status WA), lalu ketuk Buat video.`
+    : "Isi video: Foto kegiatan. Centang judul yang mau dipakai, lalu ketuk Buat video.");
+}
+$("kegToVid").addEventListener("click", () => kegToVideo(null));
 $("mkFmt").addEventListener("change", () => { try { localStorage.setItem("kka-mkfmt", $("mkFmt").value); } catch (e) {} });
 $("mkScope").addEventListener("change", () => { if ($("mkScope").value === "vb") $("mkClip").value = "full"; updateEstimate(); });
 $("mkTitle").addEventListener("input", () => {});
