@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.23.1 · 26 Nov 2026";
+const APP_VERSION = "2.23.2 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1431,7 +1431,7 @@ function reportScenes(scope, sec) {
         sc.push({ type: "clip", blob: ($("mkVer").value === "polos" && v.plain) || v.blob, sec,
           start: clipSec === "full" ? 0 : Math.min(1, Math.max(0, d - sec)), // lewati 1 detik pertama yang sering goyang
           badge: st === 0 ? "0% · KONDISI AWAL" : st === 100 ? "100% · SELESAI" : `PROGRES ${pn(st)}%`, badgeColor: badgeColor(st),
-          label: `${p.nama}${sh ? " · " + sh.t : ""} · ${tgl(v.t)}` });
+          label: `${p.nama}${sh ? " · " + sh.t : ""}` });
       });
     }
   } else if (scope === "vb") { // gabungan video bebas & video dari galeri, urut waktu
@@ -1440,7 +1440,7 @@ function reportScenes(scope, sec) {
     for (const k of list) {
       const v = videos.get(k), d = Math.max(1, v.dur || RV_MAX_SEC), sec = clipSec === "full" ? d : Math.min(d, +clipSec);
       sc.push({ type: "clip", blob: ($("mkVer").value === "polos" && v.plain) || v.blob, sec,
-        start: clipSec === "full" ? 0 : Math.min(1, Math.max(0, d - sec)), label: `${v.title || "Video"} · ${tgl(v.t)}` });
+        start: clipSec === "full" ? 0 : Math.min(1, Math.max(0, d - sec)), label: v.title || "Video" });
     }
   } else if (scope === "keg") { // foto kegiatan per judul (dipilih), bisa diselingi video pilihan, urut waktu
     const pick = new Set([...$("mkKeg").querySelectorAll("input:checked")].map(i => i.value));
@@ -1455,11 +1455,11 @@ function reportScenes(scope, sec) {
     for (const it of items) {
       if (it.ph) {
         const f = kegFolder(it.ph);
-        if (f !== lastF) { head(tgl(it.t), it.ph.cap || f, [], 2); lastF = f; }
-        sc.push({ type: "photo", blob: (polos && it.ph.orig && !it.ph.raw ? it.ph.orig : it.ph.blob), badge: "KEGIATAN", label: `${it.ph.cap || ""} · ${tgl(it.t)}`, sec });
+        if (f !== lastF) { head("KEGIATAN", it.ph.cap || f, [], 2); lastF = f; }
+        sc.push({ type: "photo", blob: (polos && it.ph.orig && !it.ph.raw ? it.ph.orig : it.ph.blob), badge: "KEGIATAN", label: it.ph.cap || "", sec });
       } else {
         const v = it.v, d = Math.max(1, v.dur || RV_MAX_SEC), s2 = clipSec === "full" ? d : Math.min(d, +clipSec); lastF = null;
-        sc.push({ type: "clip", blob: (polos && v.plain) || v.blob, sec: s2, start: clipSec === "full" ? 0 : Math.min(1, Math.max(0, d - s2)), label: `${v.title || "Video"} · ${tgl(v.t)}` });
+        sc.push({ type: "clip", blob: (polos && v.plain) || v.blob, sec: s2, start: clipSec === "full" ? 0 : Math.min(1, Math.max(0, d - s2)), label: v.title || "Video" });
       }
     }
   } else {
@@ -1479,7 +1479,7 @@ function reportScenes(scope, sec) {
         sc.push({ type: "photo", blob: ph.blob, badge: st === 0 ? "0% · KONDISI AWAL" : st === 100 ? "100% · SELESAI" : `PROGRES ${pn(st)}%`, badgeColor: badgeColor(st), label: `${p.nama} · ${a.l}`, sec });
     }
   }
-  head("REVITALISASI SD 2026", school, ["Video dibuat " + new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })], 3);
+  head("REVITALISASI SD 2026", school, [idLine().replace(school + "  ·  ", "")], 3); // tanpa tanggal: video galeri bisa saja rekaman lama
   return sc;
 }
 function updateEstimate() {
