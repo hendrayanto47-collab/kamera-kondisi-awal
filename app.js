@@ -1476,7 +1476,7 @@ function vidToMix() {
   if (!mixKeys().length) return toast("Belum ada video yang dicentang \"Masuk video gabungan\". Unggah video dari galeri atau rekam dulu.");
   renderVid(); $("mkScope").value = "vb"; $("mkClip").value = "full"; updateEstimate();
   $("mkScope").closest(".card-s").scrollIntoView({ behavior: "smooth", block: "start" });
-  toast(`${mixKeys().length} video siap digabung. Isi judul, pilih format, lalu ketuk "Buat video laporan".`);
+  toast(`${mixKeys().length} video siap digabung. Isi judul, pilih format, lalu ketuk "🎬 Buat video".`);
 }
 $("vidMixBtn").addEventListener("click", vidToMix);
 $("vidMixBtn2").addEventListener("click", vidToMix);
