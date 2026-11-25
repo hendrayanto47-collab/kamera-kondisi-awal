@@ -408,3 +408,4 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .vren{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
 .vren input{flex:1 1 180px;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);font:inherit;background:var(--surface);color:inherit}
 .vmix{display:flex;gap:6px;align-items:center;margin-top:4px;font-size:13px}
+.card-s{scroll-margin-top:84px}

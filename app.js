@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.21.0 · 26 Nov 2026";
+const APP_VERSION = "2.21.1 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1451,6 +1451,14 @@ function updateEstimate() {
     : clip ? "Belum ada video ruangan untuk pilihan ini. Rekam dulu di kartu Video per ruangan." : "Belum ada foto untuk pilihan ini.";
   $("mkBtn").disabled = !n;
 }
+// Dari layar Kegiatan langsung ke pembuat video dengan isi "Foto kegiatan"
+$("kegToVid").addEventListener("click", () => {
+  if (!kegKeys().length) return toast("Belum ada foto kegiatan.");
+  goScreen("video");
+  $("mkScope").value = "keg"; updateEstimate();
+  setTimeout(() => { $("mkScope").closest(".card-s").scrollIntoView({ behavior: "smooth", block: "start" }); }, 50);
+  toast("Isi video sudah dipilih: Foto kegiatan. Centang judul yang mau dipakai, lalu ketuk Buat video.");
+});
 $("mkFmt").addEventListener("change", () => { try { localStorage.setItem("kka-mkfmt", $("mkFmt").value); } catch (e) {} });
 $("mkScope").addEventListener("change", () => { if ($("mkScope").value === "vb") $("mkClip").value = "full"; updateEstimate(); });
 $("mkTitle").addEventListener("input", () => {});
