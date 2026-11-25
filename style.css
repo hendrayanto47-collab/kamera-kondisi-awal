@@ -409,3 +409,16 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .vren input{flex:1 1 180px;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);font:inherit;background:var(--surface);color:inherit}
 .vmix{display:flex;gap:6px;align-items:center;margin-top:4px;font-size:13px}
 .card-s{scroll-margin-top:84px}
+
+/* Pemilih video untuk video gabungan */
+.mkvidbar{display:flex;gap:8px;margin:2px 0 6px}
+.mkvid{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:6px}
+.mkvid li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--slot)}
+.mkvid li.off{opacity:.55}
+.mkvid input{width:22px;height:22px;accent-color:var(--accent)}
+.mkvid .t{min-width:0}
+.mkvid .t b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mkvid .t small{color:var(--muted);font-size:12px}
+.mkvid .mv{display:flex;gap:4px}
+.mkvid .mv button{width:36px;height:36px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:14px}
+.mkvid .mv button:disabled{opacity:.35}

@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.22.1 · 26 Nov 2026";
+const APP_VERSION = "2.23.0 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -112,7 +112,7 @@ const photos = new Map();
 const videos = new Map();
 function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
-  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, gal: v.gal, remote: v.remote, size: v.size, sizeP: v.sizeP, hasPlain: v.hasPlain, skip: v.skip, mix: v.mix, fromGal: v.fromGal, report: v.report, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
+  dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, gal: v.gal, remote: v.remote, size: v.size, sizeP: v.sizeP, hasPlain: v.hasPlain, skip: v.skip, mix: v.mix, ord: v.ord, fromGal: v.fromGal, report: v.report, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
 const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal", "raw", "gidP", "galP"];
 function persist(k) {
@@ -1263,6 +1263,7 @@ function renderVid() {
       <button class="btn ghost" type="button" data-vren="${esc(k)}">✏️ Judul</button>
       <button class="btn ghost" type="button" data-vdel="${esc(k)}">Hapus</button></div></div>`;
   }).join("");
+  renderMkVid();
   // Daftar judul kegiatan untuk video gabungan (centang dipertahankan saat tampilan diperbarui)
   { const box = $("mkKeg"), had = box.dataset.init === "1", was = new Set([...box.querySelectorAll("input:checked")].map(i => i.value)),
       known = new Set([...box.querySelectorAll("input")].map(i => i.value));
@@ -1285,7 +1286,7 @@ function renderVid() {
 $("vidList").addEventListener("change", e => {
   const mx = e.target.closest("[data-vmix]"); if (!mx) return;
   const v = videos.get(mx.dataset.vmix); if (!v) return;
-  v.mix = mx.checked; persistVid(mx.dataset.vmix); updateEstimate();
+  v.mix = mx.checked; persistVid(mx.dataset.vmix); renderMkVid(); updateEstimate();
 });
 $("vidList").addEventListener("click", e => {
   const rn = e.target.closest("[data-vren]"), rs = e.target.closest("[data-vrensave]");
@@ -1367,8 +1368,33 @@ $("vidGal").addEventListener("change", async e => {
 // Video gabungan dari video bebas/galeri: yang dicentang "Masuk video gabungan" (bawaan: semua kecuali hasil gabungan/laporan)
 const isReportVid = v => v.report || /^Video (utuh|laporan|gabungan)/.test(v.title || "");
 const mixOn = v => (v.mix !== undefined ? v.mix : !isReportVid(v));
-const mixKeys = () => [...videos.entries()].filter(([, v]) => !v.room && mixOn(v))
-  .sort((a, b) => a[1].t - b[1].t || (a[1].title || "").localeCompare(b[1].title || "", "id", { numeric: true })).map(([k]) => k);
+// Urutan: nomor urut pilihan pengguna (▲▼) bila ada, selain itu menurut waktu lalu judul
+const mixOrder = (a, b) => (a[1].ord ?? 1e15) - (b[1].ord ?? 1e15) || a[1].t - b[1].t || (a[1].title || "").localeCompare(b[1].title || "", "id", { numeric: true });
+const freeVids = () => [...videos.entries()].filter(([, v]) => !v.room).sort(mixOrder);
+const mixKeys = () => freeVids().filter(([, v]) => mixOn(v)).map(([k]) => k);
+function renderMkVid() {
+  const list = freeVids();
+  $("mkVid").innerHTML = list.map(([k, v], i) => `<li class="${mixOn(v) ? "" : "off"}"><input type="checkbox" data-mkv="${esc(k)}"${mixOn(v) ? " checked" : ""} aria-label="Pakai ${esc(v.title || "video")}">
+    <span class="t"><b>${esc(v.title || "Video")}</b><small>${tgl(v.t)} ${jam(v.t)} · ${fmtDur(v.dur || 0)}${v.remote && !v.blob ? " · ☁ di Drive" : ""}</small></span>
+    <span class="mv"><button type="button" data-mkup="${i}" ${i ? "" : "disabled"} aria-label="Naikkan">▲</button><button type="button" data-mkdn="${i}" ${i < list.length - 1 ? "" : "disabled"} aria-label="Turunkan">▼</button></span></li>`).join("")
+    || `<li class="off"><span></span><span class="t"><small>Belum ada video bebas. Unggah dari galeri atau rekam dulu.</small></span><span></span></li>`;
+}
+$("mkVid").addEventListener("change", e => {
+  const c = e.target.closest("[data-mkv]"); if (!c) return;
+  const v = videos.get(c.dataset.mkv); v.mix = c.checked; persistVid(c.dataset.mkv);
+  c.closest("li").classList.toggle("off", !c.checked); updateEstimate();
+  const box = $("vidList").querySelector(`[data-vmix="${CSS.escape(c.dataset.mkv)}"]`); if (box) box.checked = c.checked;
+});
+$("mkVid").addEventListener("click", e => {
+  const up = e.target.closest("[data-mkup]"), dn = e.target.closest("[data-mkdn]"); if (!up && !dn) return;
+  const list = freeVids(), i = +(up ? up.dataset.mkup : dn.dataset.mkdn), j = up ? i - 1 : i + 1;
+  if (j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  list.forEach(([k, v], n) => { if (v.ord !== n) { v.ord = n; persistVid(k); } });
+  renderMkVid(); updateEstimate();
+});
+$("mkVidAll").addEventListener("click", () => { freeVids().forEach(([k, v]) => { v.mix = true; persistVid(k); }); render(); });
+$("mkVidNone").addEventListener("click", () => { freeVids().forEach(([k, v]) => { v.mix = false; persistVid(k); }); render(); });
 
 // Video laporan otomatis dari foto
 function reportScenes(scope, sec) {
@@ -1447,7 +1473,7 @@ function updateEstimate() {
   const scp = $("mkScope").value || "", keg = scp === "keg", kv = keg && $("mkKegVid").checked;
   const clip = /^(rv|vb)/.test(scp);
   $("mkSecWrap").hidden = clip; $("mkClipWrap").hidden = !clip && !kv; $("mkVerWrap").hidden = !clip && !keg;
-  $("mkTitleWrap").hidden = scp !== "vb" && !keg; $("mkKegWrap").hidden = !keg;
+  $("mkTitleWrap").hidden = scp !== "vb" && !keg; $("mkKegWrap").hidden = !keg; $("mkVidWrap").hidden = scp !== "vb" && !kv;
   const n = sc.filter(s => s.type === "clip" || s.type === "photo").length, dur = sc.reduce((a, s) => a + s.sec, 0);
   $("mkEst").textContent = n ? `${keg ? `${sc.filter(s => s.type === "photo").length} foto${kv ? ` + ${sc.filter(s => s.type === "clip").length} video` : ""}` : `${n} ${clip ? "video" : "foto"}`} · durasi video ±${fmtDur(dur)}. Pembuatan butuh waktu sama dengan durasinya; biarkan layar menyala.`
     : keg ? "Centang minimal satu judul kegiatan."
