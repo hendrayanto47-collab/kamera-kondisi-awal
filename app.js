@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.24.0 · 26 Nov 2026";
+const APP_VERSION = "2.24.1 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1480,7 +1480,7 @@ function reportScenes(scope, sec) {
     }
   }
   head("REVITALISASI SD 2026", school, [idLine().replace(school + "  ·  ", "")], 3); // tanpa tanggal: video galeri bisa saja rekaman lama
-  if (profil.logo && $("mkLogo").checked) sc.unshift({ type: "logo", src: profil.logo, title: school, sub: `NPSN ${profil.npsn || "-"}${profil.wil ? "  ·  " + profil.wil : ""}`, sec: 4.2 });
+  if (profil.logo && $("mkLogo").checked) sc.unshift({ type: "logo", src: profil.logo, title: school, sub: `NPSN ${profil.npsn || "-"}${profil.wil ? "  ·  " + profil.wil : ""}`, sec: 9 });
   return sc;
 }
 function updateEstimate() {
@@ -1521,7 +1521,7 @@ function renderLogo() {
   document.querySelectorAll("[data-logodel]").forEach(b => (b.hidden = !has));
   document.querySelectorAll("[data-logopick]").forEach(b => (b.textContent = has ? "Ganti logo" : "Pilih logo"));
   $("mkLogo").disabled = !has; if (!has) $("mkLogo").checked = false;
-  $("mkLogoHint").textContent = has ? "Logo tersusun dari kepingan, menyala, lalu nama sekolah muncul (±4 detik)." : "Belum ada logo. Ketuk Pilih logo (foto/gambar logo sekolah).";
+  $("mkLogoHint").textContent = has ? "Logo utuh muncul, pecah melayang pelan (slow motion), menyatu kembali dengan hentakan, lalu nama sekolah muncul (±9 detik)." : "Belum ada logo. Ketuk Pilih logo (foto/gambar logo sekolah).";
 }
 document.addEventListener("click", e => {
   if (e.target.closest("[data-logopick]")) { $("logoFile").value = ""; $("logoFile").click(); }

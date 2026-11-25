@@ -342,7 +342,7 @@
     async function prepLogo(s) {
       try {
         const bm = await createImageBitmap(await (await fetch(s.src)).blob());
-        const L = Math.round(Math.min(W, H) * (H > W ? 0.62 : 0.4));
+        const L = Math.round(Math.min(W, H) * (H > W ? 0.62 : 0.48));
         const sc = Math.min(L / bm.width, L / bm.height), lw = Math.round(bm.width * sc), lh = Math.round(bm.height * sc);
         // logo berlatar penuh (bukan PNG transparan): diberi cakram putih agar tampil rapi
         const t0 = document.createElement("canvas"); t0.width = bm.width; t0.height = bm.height; const tx = t0.getContext("2d"); tx.drawImage(bm, 0, 0);
@@ -354,89 +354,129 @@
         else cx.drawImage(bm, (L - lw) / 2, (L - lh) / 2, lw, lh);
         s.logo = c; s.L = L;
         let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-        const N = 6; s.tiles = [];
+        const N = 5; s.N = N; s.tiles = [];
         for (let gy = 0; gy < N; gy++) for (let gx = 0; gx < N; gx++) {
-          const ang = rnd() * Math.PI * 2, dist = Math.max(W, H) * (0.55 + rnd() * 0.5);
-          s.tiles.push({ gx, gy, N, dx: Math.cos(ang) * dist, dy: Math.sin(ang) * dist, rot: (rnd() - 0.5) * Math.PI * 3, d: rnd() * 0.25 });
+          // arah lempar: menjauh dari tengah logo + sedikit acak; jarak sedang agar keping tetap terlihat di layar
+          const ox = gx - (N - 1) / 2, oy = gy - (N - 1) / 2, ln = Math.hypot(ox, oy) || 1, ja = (rnd() - 0.5) * 1.2;
+          const ang = Math.atan2(oy / ln, ox / ln) + ja + (ox === 0 && oy === 0 ? rnd() * 6.28 : 0), dist = L * (0.55 + rnd() * 0.55) * (0.6 + ln / N);
+          const d = rnd();
+          s.tiles.push({ gx, gy, dx: Math.cos(ang) * dist, dy: Math.sin(ang) * dist * (H > W ? 1.3 : 0.8), rot: (rnd() - 0.5) * Math.PI * 1.6, z: 0.7 + rnd() * 0.7, d,
+            ret: 4.4 + d * 0.9, lock: 4.4 + d * 0.9 + 0.85 });
         }
         s.parts = Array.from({ length: 70 }, () => ({ a: rnd() * Math.PI * 2, r: 0.4 + rnd() * 0.8, sp: 0.6 + rnd() * 0.8, z: 1 + rnd() * 2.5 }));
         s.shine = document.createElement("canvas"); s.shine.width = L; s.shine.height = L;
       } catch (e) { s.logo = null; }
     }
-    function logoSfx() { // efek suara sintetis: desir, klik mekanis, hentakan, kilau
+    /* Alur waktu pembuka logo (detik):
+       0–1.3 logo utuh muncul & menyala · 1.3–1.8 retak (garis cahaya) · 1.8–3.8 pecah melayang pelan (slow motion)
+       3.8–4.4 kepingan melayang diam · 4.4–6.2 kembali menyatu satu per satu (klik) · 6.2 hentakan cahaya · 6.2–9 nama sekolah */
+    const LG = { IN: 1.3, CRACK: 1.8, OUT: 3.8, BACK: 4.4, IMP: 6.2 };
+    const easeIO = t => { t = Math.min(1, Math.max(0, t)); return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+    const backOut = t => { t = Math.min(1, Math.max(0, t)); const c1 = 1.4, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+    function logoSfx(s) { // efek suara sintetis mengikuti alur animasi
       if (!ac || !dest) return;
       const now = ac.currentTime, out = ac.createGain(); out.gain.value = 0.7; out.connect(dest);
       const noise = dur => { const b = ac.createBuffer(1, Math.round(ac.sampleRate * dur), ac.sampleRate), d = b.getChannelData(0);
         for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const n = ac.createBufferSource(); n.buffer = b; return n; };
-      // desir naik (0–0.9 dtk)
-      { const n = noise(1.1), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = "bandpass"; f.Q.value = 1.2;
-        f.frequency.setValueAtTime(250, now); f.frequency.exponentialRampToValueAtTime(4500, now + 0.9);
-        g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.5, now + 0.8); g.gain.exponentialRampToValueAtTime(0.0001, now + 1.05);
-        n.connect(f).connect(g).connect(out); n.start(now); n.stop(now + 1.1); }
-      // klik mekanis saat kepingan menyatu
-      for (let i = 0; i < 9; i++) { const t = now + 0.3 + i * 0.07 + Math.random() * 0.03, o = ac.createOscillator(), g = ac.createGain();
-        o.type = "square"; o.frequency.value = 900 + Math.random() * 1400;
-        g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035); o.connect(g).connect(out); o.start(t); o.stop(t + 0.04); }
-      // hentakan bass (0.95 dtk)
-      { const t = now + 0.95, o = ac.createOscillator(), g = ac.createGain(); o.type = "sine";
-        o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.7);
-        g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9); o.connect(g).connect(out); o.start(t); o.stop(t + 0.95);
-        const n = noise(0.5), f = ac.createBiquadFilter(), g2 = ac.createGain(); f.type = "lowpass"; f.frequency.value = 1800;
-        g2.gain.setValueAtTime(0.6, t); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.45); n.connect(f).connect(g2).connect(out); n.start(t); n.stop(t + 0.5); }
-      // kilau (1.6 dtk) + nada latar lembut
-      [1318.5, 1760, 2637, 3520].forEach((fr, i) => { const t = now + 1.6 + i * 0.06, o = ac.createOscillator(), g = ac.createGain(); o.type = "sine"; o.frequency.value = fr;
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4); o.connect(g).connect(out); o.start(t); o.stop(t + 1.5); });
-      [220, 277.2, 329.6].forEach(fr => { const t = now + 1.0, o = ac.createOscillator(), g = ac.createGain(); o.type = "triangle"; o.frequency.value = fr;
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.6); g.gain.setValueAtTime(0.06, t + 2.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 3.2);
-        o.connect(g).connect(out); o.start(t); o.stop(t + 3.3); });
+      const tone = (type, f0, f1, t, dur, peak, att = 0.02) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = type;
+        o.frequency.setValueAtTime(f0, now + t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, now + t + dur);
+        g.gain.setValueAtTime(0.0001, now + t); g.gain.exponentialRampToValueAtTime(peak, now + t + att); g.gain.exponentialRampToValueAtTime(0.0001, now + t + dur);
+        o.connect(g).connect(out); o.start(now + t); o.stop(now + t + dur + 0.05); };
+      const sweep = (t, dur, f0, f1, peak, q = 1.2) => { const n = noise(dur + 0.1), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = "bandpass"; f.Q.value = q;
+        f.frequency.setValueAtTime(f0, now + t); f.frequency.exponentialRampToValueAtTime(f1, now + t + dur);
+        g.gain.setValueAtTime(0.0001, now + t); g.gain.exponentialRampToValueAtTime(peak, now + t + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, now + t + dur);
+        n.connect(f).connect(g).connect(out); n.start(now + t); n.stop(now + t + dur + 0.1); };
+      // dengung muncul
+      tone("sine", 55, 55, 0, 1.8, 0.35, 0.8); tone("triangle", 110, 110, 0.2, 1.6, 0.08, 0.6);
+      // retakan
+      for (let i = 0; i < 7; i++) { const t = LG.IN + i * 0.07 + Math.random() * 0.03; const n = noise(0.05), f = ac.createBiquadFilter(), g = ac.createGain();
+        f.type = "highpass"; f.frequency.value = 2500; g.gain.setValueAtTime(0.35, now + t); g.gain.exponentialRampToValueAtTime(0.0001, now + t + 0.05);
+        n.connect(f).connect(g).connect(out); n.start(now + t); n.stop(now + t + 0.06); }
+      // pecah: hentakan kecil + desir turun pelan (slow motion) + dengung turun
+      tone("sine", 160, 60, LG.CRACK, 0.6, 0.6); sweep(LG.CRACK, 1.9, 4000, 300, 0.45);
+      tone("sawtooth", 98, 49, LG.CRACK, 2.6, 0.05, 0.4);
+      // kembali: desir naik
+      sweep(LG.BACK - 0.2, LG.IMP - LG.BACK + 0.2, 250, 5000, 0.5);
+      // klik mekanis tiap keping terkunci
+      (s.tiles || []).forEach(k => { const t = k.lock; tone("square", 700 + Math.random() * 1500, 700, t, 0.04, 0.09, 0.002); });
+      // hentakan utama
+      tone("sine", 150, 36, LG.IMP, 1.1, 1, 0.005);
+      { const n = noise(0.6), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = "lowpass"; f.frequency.value = 1600;
+        g.gain.setValueAtTime(0.6, now + LG.IMP); g.gain.exponentialRampToValueAtTime(0.0001, now + LG.IMP + 0.55); n.connect(f).connect(g).connect(out); n.start(now + LG.IMP); n.stop(now + LG.IMP + 0.6); }
+      // kilau + nada latar
+      [1318.5, 1760, 2637, 3520].forEach((fr, i) => tone("sine", fr, fr, LG.IMP + 0.6 + i * 0.07, 1.6, 0.06));
+      [220, 277.2, 329.6, 440].forEach(fr => { const o = ac.createOscillator(), g = ac.createGain(), t = now + LG.IMP; o.type = "triangle"; o.frequency.value = fr;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.8); g.gain.setValueAtTime(0.05, t + 2); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.9);
+        o.connect(g).connect(out); o.start(t); o.stop(t + 3); });
     }
     function paintLogo(s, t) {
-      const L = s.L, cx = W / 2, cy = H * (H > W ? 0.42 : 0.42), IMP = 0.95;
-      const bg = x.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
+      const L = s.L, cx = W / 2, cy = H * 0.42, M = Math.max(W, H);
+      const bg = x.createRadialGradient(cx, cy, 0, cx, cy, M * 0.75);
       bg.addColorStop(0, "#2a2f2c"); bg.addColorStop(0.6, "#121614"); bg.addColorStop(1, "#050606");
       x.fillStyle = bg; x.fillRect(0, 0, W, H);
       if (!s.logo) return;
-      // sinar berputar di belakang logo
-      if (t > IMP) { const a = Math.min(1, (t - IMP) / 0.5) * 0.16;
-        x.save(); x.translate(cx, cy); x.rotate((t - IMP) * 0.25);
+      const k = t - LG.IMP;
+      // sinar berputar di belakang logo (setelah menyatu)
+      if (k > 0) { const a = Math.min(1, k / 0.6) * 0.16;
+        x.save(); x.translate(cx, cy); x.rotate(k * 0.22);
         for (let i = 0; i < 14; i++) { x.rotate(Math.PI * 2 / 14); x.fillStyle = `rgba(242,183,5,${a})`;
-          x.beginPath(); x.moveTo(0, 0); x.lineTo(-L * 0.12, -Math.max(W, H)); x.lineTo(L * 0.12, -Math.max(W, H)); x.closePath(); x.fill(); }
+          x.beginPath(); x.moveTo(0, 0); x.lineTo(-L * 0.12, -M); x.lineTo(L * 0.12, -M); x.closePath(); x.fill(); }
         x.restore(); }
-      // partikel: berkumpul ke tengah, lalu memercik keluar setelah hentakan
+      // partikel
       for (const p of s.parts) {
-        const R = Math.max(W, H) * 0.7 * p.r;
         let rr, al;
-        if (t < IMP) { const q = ease(t / IMP); rr = R * (1 - q) + L * 0.3 * q; al = 0.3 + 0.7 * q; }
-        else { const q = (t - IMP) * p.sp; rr = L * 0.35 + q * Math.max(W, H) * 0.6; al = Math.max(0, 1 - q * 1.4); }
+        if (t < LG.CRACK) { rr = L * (0.55 + p.r * 0.3) + Math.sin(t * p.sp * 2 + p.a) * 6; al = 0.25 * Math.min(1, t / LG.IN); }
+        else if (t < LG.BACK) { const q = (t - LG.CRACK) / (LG.BACK - LG.CRACK); rr = L * 0.5 + ease(q) * M * 0.45 * p.r; al = 0.8 * (1 - q * 0.6); }
+        else if (k < 0) { const q = easeIO((t - LG.BACK) / (LG.IMP - LG.BACK)); rr = (L * 0.5 + M * 0.45 * p.r) * (1 - q) + L * 0.45 * q; al = 0.5 + 0.5 * q; }
+        else { const q = k * p.sp; rr = L * 0.45 + q * M * 0.6; al = Math.max(0, 1 - q * 1.3); }
         if (al <= 0) continue;
-        x.fillStyle = `rgba(255,214,90,${al})`; x.beginPath(); x.arc(cx + Math.cos(p.a + t * 0.6) * rr, cy + Math.sin(p.a + t * 0.6) * rr, p.z, 0, Math.PI * 2); x.fill();
+        x.fillStyle = `rgba(255,214,90,${al})`; x.beginPath(); x.arc(cx + Math.cos(p.a + t * 0.25) * rr, cy + Math.sin(p.a + t * 0.25) * rr, p.z, 0, Math.PI * 2); x.fill();
       }
-      // kepingan logo menyatu (efek "transformer")
-      if (t < IMP) {
-        const ts = L / 6;
-        for (const k of s.tiles) {
-          const q = ease((t - 0.1 - k.d) / 0.7); if (q <= 0) continue;
-          const fx = cx - L / 2 + k.gx * ts + ts / 2, fy = cy - L / 2 + k.gy * ts + ts / 2;
-          x.save(); x.globalAlpha = Math.min(1, q * 2.5); x.translate(fx + k.dx * (1 - q), fy + k.dy * (1 - q)); x.rotate(k.rot * (1 - q));
-          x.drawImage(s.logo, k.gx * ts, k.gy * ts, ts, ts, -ts / 2 - 0.5, -ts / 2 - 0.5, ts + 1, ts + 1);
-          if (q < 1) { x.strokeStyle = `rgba(242,183,5,${(1 - q) * 0.9})`; x.lineWidth = 2; x.strokeRect(-ts / 2, -ts / 2, ts, ts); }
-          x.restore();
+      const ts = L / s.N;
+      if (t < LG.CRACK) { // logo utuh muncul, menyala, lalu retak
+        const a = easeIO(t / LG.IN), sc = 0.85 + 0.15 * ease(t / LG.IN), d = L * sc;
+        x.save(); x.globalAlpha = a; x.shadowColor = "rgba(242,183,5,.7)"; x.shadowBlur = 20 + 25 * Math.sin(Math.min(1, t / LG.IN) * Math.PI);
+        if (t < LG.IN) x.drawImage(s.logo, cx - d / 2, cy - d / 2, d, d);
+        else { // retak: keping bergetar halus + garis cahaya di sambungan
+          const q = (t - LG.IN) / (LG.CRACK - LG.IN);
+          for (const tl of s.tiles) { const jx = (Math.random() - 0.5) * 3 * q, jy = (Math.random() - 0.5) * 3 * q;
+            x.drawImage(s.logo, tl.gx * ts, tl.gy * ts, ts, ts, cx - L / 2 + tl.gx * ts + jx, cy - L / 2 + tl.gy * ts + jy, ts, ts); }
+          x.shadowBlur = 12; x.strokeStyle = `rgba(255,220,120,${q})`; x.lineWidth = 2;
+          for (let i = 1; i < s.N; i++) { x.beginPath(); x.moveTo(cx - L / 2 + i * ts, cy - L / 2); x.lineTo(cx - L / 2 + i * ts, cy - L / 2 + L * Math.min(1, q * 1.6)); x.stroke();
+            x.beginPath(); x.moveTo(cx - L / 2, cy - L / 2 + i * ts); x.lineTo(cx - L / 2 + L * Math.min(1, q * 1.6), cy - L / 2 + i * ts); x.stroke(); }
         }
-      } else {
-        const k = t - IMP, bounce = 1 + 0.1 * Math.exp(-k * 5) * Math.cos(k * 16), d = L * bounce;
-        // cincin emas tersegmen berputar
+        x.restore();
+      } else if (k < 0) { // pecah melayang pelan, diam sejenak, lalu kembali satu per satu
+        for (const tl of s.tiles) {
+          let q; // 0 = di tempatnya, 1 = terlempar penuh
+          if (t < tl.ret) q = ease((t - LG.CRACK - tl.d * 0.25) / (LG.OUT - LG.CRACK));
+          else q = 1 - backOut((t - tl.ret) / (tl.lock - tl.ret));
+          q = Math.max(0, q);
+          const drift = t < tl.ret ? Math.sin((t - LG.CRACK) * 1.3 + tl.d * 9) * 8 * q : 0;
+          const fx = cx - L / 2 + tl.gx * ts + ts / 2, fy = cy - L / 2 + tl.gy * ts + ts / 2;
+          const zs = 1 + (tl.z - 1) * q;
+          x.save(); x.translate(fx + tl.dx * q + drift, fy + tl.dy * q - drift * 0.6); x.rotate(tl.rot * q); x.scale(zs, zs);
+          x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 18 * q;
+          x.drawImage(s.logo, tl.gx * ts, tl.gy * ts, ts, ts, -ts / 2 - 0.5, -ts / 2 - 0.5, ts + 1, ts + 1);
+          x.shadowBlur = 0;
+          if (q > 0.02) { x.strokeStyle = `rgba(255,214,90,${Math.min(1, q * 1.5) * 0.9})`; x.lineWidth = 2 / zs; x.strokeRect(-ts / 2, -ts / 2, ts, ts); }
+          x.restore();
+          // kilatan kecil saat keping terkunci
+          const lk = t - tl.lock; if (lk > 0 && lk < 0.25) { x.fillStyle = `rgba(255,240,180,${0.8 * (1 - lk / 0.25)})`; x.fillRect(fx - ts / 2, fy - ts / 2, ts, ts); }
+        }
+      } else { // menyatu: hentakan, cincin, kilau, nama sekolah
+        const bounce = 1 + 0.08 * Math.exp(-k * 4) * Math.cos(k * 14), d = L * bounce;
         x.save(); x.translate(cx, cy); x.lineCap = "round";
-        const ra = Math.min(1, k / 0.4);
-        [[0.62, 1, 5, 7], [0.7, -0.6, 3, 11]].forEach(([rf, sp, lw, seg]) => {
+        const ra = Math.min(1, k / 0.5);
+        [[0.62, 0.8, 5, 7], [0.7, -0.5, 3, 11]].forEach(([rf, sp, lw, seg]) => {
           x.strokeStyle = `rgba(242,183,5,${0.85 * ra})`; x.lineWidth = lw;
           for (let i = 0; i < seg; i++) { const a0 = i * Math.PI * 2 / seg + k * sp; x.beginPath(); x.arc(0, 0, L * rf * (0.9 + 0.1 * ra), a0, a0 + Math.PI * 2 / seg * 0.62); x.stroke(); }
         });
         x.restore();
         x.save(); x.shadowColor = "rgba(242,183,5,.8)"; x.shadowBlur = 30 + 30 * Math.exp(-k * 2);
         x.drawImage(s.logo, cx - d / 2, cy - d / 2, d, d); x.restore();
-        // kilau melintas di atas logo
-        if (k > 0.55 && k < 1.35) {
-          const sh = s.shine, sx2 = sh.getContext("2d"), p = (k - 0.55) / 0.8;
+        if (k > 0.6 && k < 1.6) {
+          const sh = s.shine, sx2 = sh.getContext("2d"), p = (k - 0.6) / 1.0;
           sx2.clearRect(0, 0, L, L); sx2.globalCompositeOperation = "source-over"; sx2.drawImage(s.logo, 0, 0);
           sx2.globalCompositeOperation = "source-atop";
           const gx = -L + p * L * 3, g = sx2.createLinearGradient(gx, 0, gx + L * 0.5, L * 0.5);
@@ -444,12 +484,10 @@
           sx2.fillStyle = g; sx2.fillRect(0, 0, L, L); sx2.globalCompositeOperation = "source-over";
           x.drawImage(sh, cx - d / 2, cy - d / 2, d, d);
         }
-        // gelombang kejut + kilat
-        const sw = k / 0.7; if (sw < 1) { x.strokeStyle = `rgba(255,230,150,${1 - sw})`; x.lineWidth = 8 * (1 - sw) + 1;
-          x.beginPath(); x.arc(cx, cy, L * 0.5 + sw * Math.max(W, H) * 0.6, 0, Math.PI * 2); x.stroke(); }
-        if (k < 0.3) { x.fillStyle = `rgba(255,248,225,${0.75 * (1 - k / 0.3)})`; x.fillRect(0, 0, W, H); }
-        // nama sekolah
-        const a1 = ease((k - 0.75) / 0.6), a2 = ease((k - 1.0) / 0.6), P = H > W;
+        const sw = k / 0.8; if (sw < 1) { x.strokeStyle = `rgba(255,230,150,${1 - sw})`; x.lineWidth = 8 * (1 - sw) + 1;
+          x.beginPath(); x.arc(cx, cy, L * 0.5 + sw * M * 0.6, 0, Math.PI * 2); x.stroke(); }
+        if (k < 0.35) { x.fillStyle = `rgba(255,248,225,${0.75 * (1 - k / 0.35)})`; x.fillRect(0, 0, W, H); }
+        const a1 = ease((k - 0.7) / 0.8), a2 = ease((k - 1.1) / 0.8), P = H > W;
         x.textAlign = "center"; x.globalAlpha = a1; x.fillStyle = "#fff"; x.font = `800 ${P ? 48 : 52}px Arial, sans-serif`;
         const ty = cy + L * 0.5 + (P ? 120 : 92) + (1 - a1) * 30;
         const lines = wrap(s.title, W - 80); lines.forEach((l, i) => x.fillText(l, cx, ty + i * (P ? 58 : 60)));
@@ -525,7 +563,7 @@
       if (scenes[i + 1]) prep(scenes[i + 1]);
       if (!started) { r.start(1000); started = true; } else if (r.state === "paused") r.resume();
       if (s.vid) { s.vid.play().catch(() => { s.vid.muted = true; s.vid.play().catch(() => {}); }); }
-      if (s.type === "logo") logoSfx();
+      if (s.type === "logo") logoSfx(s);
       const t0 = performance.now();
       await new Promise(resolve => {
         const tick = () => {
