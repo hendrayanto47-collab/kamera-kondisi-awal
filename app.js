@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.22.0 · 26 Nov 2026";
+const APP_VERSION = "2.22.1 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1471,6 +1471,15 @@ function kegToVideo(only) {
     : "Isi video: Foto kegiatan. Centang judul yang mau dipakai, lalu ketuk Buat video.");
 }
 $("kegToVid").addEventListener("click", () => kegToVideo(null));
+// Langsung ke pembuat video dengan isi "Gabungan video pilihan"
+function vidToMix() {
+  if (!mixKeys().length) return toast("Belum ada video yang dicentang \"Masuk video gabungan\". Unggah video dari galeri atau rekam dulu.");
+  renderVid(); $("mkScope").value = "vb"; $("mkClip").value = "full"; updateEstimate();
+  $("mkScope").closest(".card-s").scrollIntoView({ behavior: "smooth", block: "start" });
+  toast(`${mixKeys().length} video siap digabung. Isi judul, pilih format, lalu ketuk "Buat video laporan".`);
+}
+$("vidMixBtn").addEventListener("click", vidToMix);
+$("vidMixBtn2").addEventListener("click", vidToMix);
 $("mkFmt").addEventListener("change", () => { try { localStorage.setItem("kka-mkfmt", $("mkFmt").value); } catch (e) {} });
 $("mkScope").addEventListener("change", () => { if ($("mkScope").value === "vb") $("mkClip").value = "full"; updateEstimate(); });
 $("mkTitle").addEventListener("input", () => {});

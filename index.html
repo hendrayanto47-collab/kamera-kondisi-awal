@@ -115,6 +115,7 @@
       <p class="hint">HP dimiringkan (landscape), mulai dari tampak depan, berjalan pelan memutari bangunan. Durasi 1–3 menit (maks. 5 menit). Horizon diluruskan otomatis. Setiap rekaman menyimpan dua versi: dengan stamp dan polos.</p>
       <button class="btn big" id="vidGalBtn" type="button">🖼 Unggah video dari galeri</button>
       <input type="file" id="vidGal" accept="video/*" multiple hidden>
+      <button class="btn big primary" id="vidMixBtn" type="button">🎞️ Gabungkan video jadi satu</button>
       <p class="hint">Pilih satu atau beberapa video dari galeri HP. Judul di atas dipakai untuk video tersebut (bisa diubah lagi lewat ✏️ Judul di daftar). Video galeri disimpan apa adanya, tanpa stamp.</p>
     </section>
     <section class="card-s">
@@ -133,10 +134,11 @@
         <div class="mkkeg" id="mkKeg"></div>
         <label class="chk"><input type="checkbox" id="mkKegVid"> Sertakan juga video pilihan (dicentang "Masuk video gabungan"), diurutkan menurut waktu</label>
       </div>
-      <button class="btn big" id="mkBtn" type="button">Buat video laporan</button>
+      <button class="btn big primary" id="mkBtn" type="button">🎬 Buat video</button>
       <p class="hint" id="mkEst"></p>
     </section>
     <h2 class="list-h">Video tersimpan</h2>
+    <button class="btn" id="vidMixBtn2" type="button">🎞️ Gabungkan video yang dicentang jadi satu</button>
     <div class="vidlist" id="vidList"></div>
   </section>
 
