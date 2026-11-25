@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.18.0 · 26 Nov 2026";
+const APP_VERSION = "2.19.0 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -624,7 +624,7 @@ function renderPaket(st) {
   const anyPhoto = stageKeys(st).length > 0;
   $("tCount").textContent = cnt; $("tOf").hidden = false; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${pn(st)}%`;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
-  $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto; $("galAllBtn").disabled = !anyPhoto; renderShareBtn();
+  $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto; $("galAllBtn").disabled = !anyPhoto; $("galPlainBtn").disabled = !anyPhoto; renderShareBtn();
   const kurang = paket.filter(p => reqCount(p, st) < reqAngles(p, st).length).length;
   $("dockMsg").textContent = !profil.nama
     ? "Isi dulu nama sekolah dan NPSN, lalu ketuk kotak foto untuk membuka kamera."
@@ -657,7 +657,7 @@ function renderKeg() {
   }).join("")}</div></section>`).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
   $("tBar").style.width = keys.length ? "100%" : "0";
-  $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length; $("galAllBtn").disabled = !keys.length; renderShareBtn();
+  $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length; $("galAllBtn").disabled = !keys.length; $("galPlainBtn").disabled = !keys.length; renderShareBtn();
   $("dockMsg").textContent = keys.length ? `${keys.length} foto kegiatan. Ketuk Unggah ke Drive untuk mengirim semuanya.`
     : "Foto kegiatan: rapat, pekerjaan berlangsung, material datang, serah terima.";
 }
@@ -959,11 +959,8 @@ try { vidHorizon = localStorage.getItem("kka-hlock") !== "0"; } catch (e) {}
 $("pHLock").checked = vidHorizon;
 $("pHLock").addEventListener("change", e => { vidHorizon = e.target.checked; try { localStorage.setItem("kka-hlock", vidHorizon ? "1" : "0"); } catch (er) {}
   toast(vidHorizon ? "Horizon video diluruskan otomatis (halus)." : "Horizon video tidak diluruskan: gambar persis seperti kamera."); });
-let vidStamp = "both";
-try { vidStamp = localStorage.getItem("kka-vstamp") || "both"; } catch (e) {}
-$("pVStamp").value = vidStamp;
-$("pVStamp").addEventListener("change", e => { vidStamp = e.target.value; try { localStorage.setItem("kka-vstamp", vidStamp); } catch (er) {}
-  toast(vidStamp === "both" ? "Setiap rekaman menyimpan 2 file: dengan stamp dan polos." : vidStamp === "plain" ? "Video direkam polos tanpa stamp." : "Video direkam dengan stamp."); });
+// Setiap rekaman selalu menyimpan 2 file: dengan stamp + polos (tanpa stamp)
+const vidStamp = "both";
 const verBlob = (v, ver) => (ver === "polos" ? v.plain || (v.nostamp ? v.blob : null) : v.nostamp ? null : v.blob);
 const verTag = v => (v.plain ? "2 versi" : v.nostamp ? "polos" : "stamp");
 $("vidAudio").addEventListener("change", e => { vidAudio = e.target.checked; try { localStorage.setItem("kka-vaudio", vidAudio ? "1" : "0"); } catch (e) {} });
@@ -2087,6 +2084,7 @@ document.addEventListener("keydown", e => {
 });
 $("vSave").onclick = () => saveToGallery([phItem(vKey)], "Simpan foto");
 $("vSavePlain").onclick = () => savePlain([vKey], "Simpan foto tanpa stamp");
+$("galPlainBtn").onclick = () => savePlain(viewKeys(), "Simpan tanpa stamp");
 $("galAllBtn").onclick = () => saveToGallery(viewKeys().map(phItem),
   screen === "kegiatan" ? "Foto kegiatan" : stageName(view));
 $("vShare").onclick = () => shareKeys([vKey], labelOf(vKey));
@@ -2358,7 +2356,7 @@ async function cloudSync(manual) {
           ph.gpath = path; persist(k); } });
         continue;
       }
-      if (ph.gs && k.startsWith("#keg|") && ph.orig && !ph.raw && !ph.gidP) { jobs.push({ rank: 3, run: () => upPlain(k, ph) }); continue; }
+      if (ph.gs && (inPaket(k) || k.startsWith("#keg|")) && ph.orig && !ph.raw && !ph.gidP) { jobs.push({ rank: 3, run: () => upPlain(k, ph) }); continue; } // foto lama: lengkapi versi tanpa stamp
       if (ph.gs || ph.bad || !(inPaket(k) || k.startsWith("#keg|"))) continue;
       jobs.push({ rank: 1, run: () => upPhoto(k, ph) });
     }
@@ -2379,15 +2377,18 @@ async function cloudSync(manual) {
         } catch (e) { if (e.status !== 404) throw e; }
       }
       if (!r) r = await GD.put(ph.blob, { ...meta, parents: [await F(path)], mimeType: "image/jpeg" });
-      if (q.keg) await upPlain(k, ph, props, true);
+      await upPlain(k, ph, props, true);
       const cur = photos.get(k);
       if (cur === ph) { ph.gid = r.id; ph.gmod = r.modifiedTime; ph.gs = true; ph.gpath = path; persist(k); }
       else if (cur && !cur.gid) { cur.gid = r.id; persist(k); } // diganti saat sedang dikirim: versi baru akan memperbarui file yang sama
     }
-    /* Foto kegiatan: versi tanpa stamp ikut dikirim ke "Kegiatan (tanpa stamp)/<judul>" agar HP lain juga bisa mengunduhnya */
+    /* Versi tanpa stamp ikut dikirim agar aman dan bisa diunduh dari HP lain:
+       foto persen → "FOTO_REVITSD_<persen> (tanpa stamp)/<ruang>", foto kegiatan → "Kegiatan (tanpa stamp)/<judul>" */
+    const plainPath = (k, ph) => { const q = parseKey(k); if (q.keg) return `Kegiatan (tanpa stamp)/${kegFolder(ph)}`;
+      const p = paket.find(x => x.id === q.pid); return p ? `FOTO_REVITSD_${pn(q.st)} (tanpa stamp)/${clean(p.nama)}` : null; };
     async function upPlain(k, ph, props, content) {
       if (!ph.orig || ph.raw) return;
-      const pathP = `Kegiatan (tanpa stamp)/${kegFolder(ph)}`;
+      const pathP = plainPath(k, ph); if (!pathP) return;
       const metaP = { name: fname(k).replace(/\.jpg$/, " - tanpa stamp.jpg"), appProperties: { ...(props || { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), cap: sv(ph.cap).slice(0, 90) }), var: "plain", gp: pathP.slice(0, 100) } };
       let done = false;
       if (ph.gidP) {

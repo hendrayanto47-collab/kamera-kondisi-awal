@@ -59,6 +59,7 @@
         <button class="btn" id="zipBtn" type="button" disabled>ZIP</button>
         <button class="btn primary" id="shareAllBtn" type="button" disabled>Unggah ke Drive</button>
         <button class="btn" id="galAllBtn" type="button" disabled>Simpan ke galeri</button>
+        <button class="btn" id="galPlainBtn" type="button" disabled>Tanpa stamp</button>
       </div>
     </div>
     <div class="meter"><i id="tBar"></i></div>
@@ -164,7 +165,7 @@
       </div>
       <label class="f">Kualitas perekam aplikasi<select id="pVQual"><option value="1080">Full HD 1080p (tajam)</option><option value="720">HD 720p (ringan, untuk HP lambat)</option></select></label>
       <label class="chk" style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" id="pHLock" checked> Luruskan horizon video otomatis</label>
-      <label class="f">Stamp di video<select id="pVStamp"><option value="both">Dua versi sekaligus: dengan stamp + polos</option><option value="stamp">Dengan stamp saja</option><option value="plain">Polos saja (tanpa stamp)</option></select></label>
+      <p class="hint">📷🎥 Setiap foto dan video menyimpan <b>2 versi</b>: dengan stamp dan tanpa stamp. Keduanya ikut dikirim ke Drive (folder bertanda "tanpa stamp"/"polos").</p>
       <div class="restamp"><span id="oldInfo"></span><button class="btn" id="oldBtn2" type="button"></button></div>
       <label class="chk"><input type="checkbox" id="optLive" checked> Kamera dengan arahan langsung</label>
       <label class="chk"><input type="checkbox" id="optGuide" checked> Panduan posisi sebelum memotret</label>
