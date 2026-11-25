@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.24.1 · 26 Nov 2026";
+const APP_VERSION = "2.25.0 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1260,6 +1260,7 @@ function renderVid() {
       <div class="acts">${v.plain || v.hasPlain ? `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah (stamp)</button><button class="btn primary" type="button" data-vshare="${esc(k)}" data-ver="polos">Unggah (polos)</button>`
         : `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah ke Drive</button>`}
       <button class="btn" type="button" data-vdl="${esc(k)}">Simpan ke galeri</button>
+      <button class="btn" type="button" data-vlogo="${esc(k)}">✨ Tambah pembuka logo</button>
       <button class="btn ghost" type="button" data-vren="${esc(k)}">✏️ Judul</button>
       <button class="btn ghost" type="button" data-vdel="${esc(k)}">Hapus</button></div></div>`;
   }).join("");
@@ -1305,6 +1306,8 @@ $("vidList").addEventListener("click", e => {
     if (t !== v.title) { v.title = t; if (v.gid) v.metaDirty = true; persistVid(k); cloudSoon(1500); }
     render(); toast(`Judul diganti: "${t}".`); return;
   }
+  const lg = e.target.closest("[data-vlogo]");
+  if (lg) { addLogoIntro(lg.dataset.vlogo); return; }
   const sh = e.target.closest("[data-vshare]"), dl = e.target.closest("[data-vdl]"), del = e.target.closest("[data-vdel]");
   if (sh) {
     const k = sh.dataset.vshare, v = videos.get(k), polos = sh.dataset.ver === "polos" && v.plain;
@@ -1540,6 +1543,22 @@ $("logoFile").addEventListener("change", async e => {
   } catch (er) { toast("Gambar logo tidak bisa dibaca. Coba PNG atau JPG."); }
 });
 renderLogo();
+
+/* Tambahkan pembuka logo ke video yang sudah ada (mis. video gabungan lama). Video asli tetap disimpan;
+   hasilnya video baru "… (dengan logo)" dengan rasio (tegak/mendatar) yang sama seperti aslinya. */
+async function addLogoIntro(k) {
+  if (!profil.logo) { toast("Unggah logo sekolah dulu."); $("logoFile").value = ""; $("logoFile").click(); return; }
+  if (!(await fetchVids([k], "Video siap. Menambahkan pembuka logo…"))) return;
+  const v = videos.get(k); if (!v || !v.blob) return;
+  const m = await videoMeta(v.blob), dur = (m && m.dur) || v.dur || 0;
+  if (!dur) return toast("Durasi video tidak terbaca, pembuka logo tidak bisa ditambahkan.");
+  const portrait = !!(m && m.h > m.w), school = profil.nama || "Sekolah";
+  const sc = [{ type: "logo", src: profil.logo, title: school, sub: `NPSN ${profil.npsn || "-"}${profil.wil ? "  ·  " + profil.wil : ""}`, sec: 9 },
+    { type: "clip", blob: v.blob, sec: dur, start: 0 }];
+  toast(`Membuat ulang video dengan pembuka logo (±${fmtDur(dur + 9)}). Biarkan layar menyala.`);
+  KKAVid.makeReport(sc, { portrait, onSaved: nv => saveVideo({ ...nv, title: `${(v.title || "Video").replace(/ \(dengan logo\)$/, "")} (dengan logo)`, report: true },
+    "Selesai. Video dengan pembuka logo tersimpan di atas daftar; video aslinya tetap ada."), onError: m2 => toast(m2) });
+}
 
 // Langsung ke pembuat video dengan isi "Gabungan video pilihan"
 function vidToMix() {
