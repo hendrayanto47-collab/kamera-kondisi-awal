@@ -220,7 +220,9 @@ h3.sub{font-family:var(--f-display);font-size:15px;margin:0}
 .vf-spacer{visibility:hidden}
 .mk{position:fixed;inset:0;z-index:55;background:rgba(10,12,11,.88);display:grid;place-items:center;padding:16px}
 .mk-card{background:var(--surface);color:var(--ink);border-radius:14px;padding:16px;width:min(560px,100%);display:grid;gap:10px}
-.mk-card canvas{width:100%;height:auto;border-radius:8px;background:#000}
+.mk-card canvas{width:100%;height:auto;max-height:58vh;object-fit:contain;border-radius:8px;background:#000}
+.mkkeg{display:flex;flex-wrap:wrap;gap:6px 14px;margin:4px 0 8px}
+.mkkeg label{display:flex;gap:6px;align-items:center;font-size:14px}
 .mk-meter{width:100%}
 .mk-card p{margin:0;font-size:14px}
 

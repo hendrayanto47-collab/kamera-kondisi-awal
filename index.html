@@ -121,10 +121,16 @@
       <p class="hint" style="margin-top:0">Gabungkan semua video ruangan (atau foto) menjadi satu video dengan judul pembuka, nama tiap ruangan, label tahap, dan penutup. Hasilnya bisa dibagikan ke YouTube, Instagram, TikTok, Facebook, atau WhatsApp.</p>
       <div class="row2">
         <label class="f">Isi video<select id="mkScope"></select></label>
+        <label class="f mk-sec" id="mkFmtWrap">Format<select id="mkFmt"><option value="land">Mendatar 16:9 (YouTube, Facebook)</option><option value="port">Tegak 9:16 (TikTok, Reels, Status WA)</option></select></label>
         <label class="f mk-sec" id="mkTitleWrap" hidden>Judul video gabungan<input type="text" id="mkTitle" placeholder="mis. Progres pekerjaan minggu ke-2" autocomplete="off"></label>
         <label class="f mk-sec" id="mkVerWrap" hidden>Versi video<select id="mkVer"><option value="polos">Polos</option><option value="stamp">Dengan stamp</option></select></label>
         <label class="f mk-sec" id="mkClipWrap" hidden>Detik/video<select id="mkClip"><option value="4">4</option><option value="6" selected>6</option><option value="full">Penuh</option></select></label>
         <label class="f mk-sec" id="mkSecWrap">Detik/foto<select id="mkSec"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
+      </div>
+      <div id="mkKegWrap" hidden>
+        <p class="hint" style="margin:6px 0 2px"><b>Judul kegiatan yang dimasukkan:</b></p>
+        <div class="mkkeg" id="mkKeg"></div>
+        <label class="chk"><input type="checkbox" id="mkKegVid"> Sertakan juga video pilihan (dicentang "Masuk video gabungan"), diurutkan menurut waktu</label>
       </div>
       <button class="btn big" id="mkBtn" type="button">Buat video laporan</button>
       <p class="hint" id="mkEst"></p>

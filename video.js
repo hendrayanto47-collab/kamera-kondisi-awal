@@ -269,7 +269,8 @@
      Dirender waktu-nyata ke kanvas lalu direkam (durasi render = durasi video). */
   let mk = null;
   async function makeReport(scenes, o) {
-    W = 1280; H = 720;
+    // mendatar 16:9 (YouTube/Facebook) atau tegak 9:16 (TikTok, Reels, Status WA)
+    if (o.portrait) { W = 720; H = 1280; } else { W = 1280; H = 720; }
     if (!supported()) { o.onError("HP/browser ini belum mendukung pembuatan video."); return; }
     mk = { cancel: false };
     const cv = $("mkCanvas"); cv.width = W; cv.height = H;
@@ -304,26 +305,46 @@
     const done = new Promise(res => (r.onstop = res));
     const starts = []; let acc = 0; for (const s of scenes) { starts.push(acc); acc += s.sec; }
 
+    // Judul panjang dipecah per baris agar tidak terpotong (penting di format tegak)
+    function wrap(t, maxW) {
+      const out = []; let line = "";
+      for (const w of String(t || "").split(/\s+/)) { const tryL = line ? line + " " + w : w;
+        if (x.measureText(tryL).width > maxW && line) { out.push(line); line = w; } else line = tryL; }
+      if (line) out.push(line); return out.slice(0, 4);
+    }
+    // Isi berbeda rasio (foto mendatar di video tegak, video tegak di video mendatar): latar buram + gambar utuh di tengah
+    function fitDraw(src, sw, sh, zoom) {
+      const cover = Math.max(W / sw, H / sh), contain = Math.min(W / sw, H / sh);
+      if (contain / cover > 0.7) { const sc = cover * zoom; x.drawImage(src, (W - sw * sc) / 2, (H - sh * sc) / 2, sw * sc, sh * sc); return; }
+      x.save(); try { x.filter = "blur(24px) brightness(0.55)"; } catch (e) {}
+      const bc = cover * 1.1; x.drawImage(src, (W - sw * bc) / 2, (H - sh * bc) / 2, sw * bc, sh * bc);
+      x.restore(); x.filter = "none";
+      if (!("filter" in x)) { x.fillStyle = "rgba(0,0,0,.5)"; x.fillRect(0, 0, W, H); }
+      const sc = contain * zoom; x.drawImage(src, (W - sw * sc) / 2, (H - sh * sc) / 2, sw * sc, sh * sc);
+    }
     function paintScene(s, t, alpha) {
       x.globalAlpha = alpha;
+      const P = H > W, m = P ? 56 : 120;
       if (s.type === "title") {
         x.fillStyle = "#1d2421"; x.fillRect(0, 0, W, H);
-        x.fillStyle = "#f2b705"; x.fillRect(80, 250, 10, 220);
-        x.textAlign = "left"; x.fillStyle = "#f2b705"; x.font = "800 30px Arial, sans-serif";
-        x.fillText(s.kicker || "", 120, 290, W - 200);
-        x.fillStyle = "#fff"; x.font = "800 64px Arial, sans-serif";
-        x.fillText(s.title, 120, 370, W - 200);
-        x.font = "500 28px Arial, sans-serif"; x.fillStyle = "#d6dbd8";
-        (s.lines || []).forEach((l, i) => x.fillText(l, 120, 425 + i * 40, W - 200));
+        x.textAlign = "left";
+        x.font = `800 ${P ? 26 : 30}px Arial, sans-serif`; const kick = wrap(s.kicker, W - m - 40);
+        x.font = `800 ${P ? 58 : 64}px Arial, sans-serif`; const tl = wrap(s.title, W - m - 40);
+        x.font = `500 ${P ? 26 : 28}px Arial, sans-serif`; const ls = (s.lines || []).flatMap(l => wrap(l, W - m - 40));
+        const hgt = kick.length * 40 + tl.length * (P ? 68 : 74) + 16 + ls.length * 40;
+        let y = Math.round((H - hgt) / 2) + 30;
+        x.fillStyle = "#f2b705"; x.fillRect(m - 40, y - 34, 10, hgt + 10);
+        x.font = `800 ${P ? 26 : 30}px Arial, sans-serif`; kick.forEach(l => { x.fillText(l, m, y); y += 40; });
+        y += P ? 34 : 40; x.fillStyle = "#fff"; x.font = `800 ${P ? 58 : 64}px Arial, sans-serif`; tl.forEach(l => { x.fillText(l, m, y, W - m - 40); y += P ? 68 : 74; });
+        y += 6; x.font = `500 ${P ? 26 : 28}px Arial, sans-serif`; x.fillStyle = "#d6dbd8"; ls.forEach(l => { x.fillText(l, m, y, W - m - 40); y += 40; });
       } else {
         x.fillStyle = "#000"; x.fillRect(0, 0, W, H);
         if (s.type === "clip") {
           const v = s.vid, vw = v.videoWidth, vh = v.videoHeight;
-          if (vw) { const sc = Math.min(W / vw, H / vh); x.drawImage(v, (W - vw * sc) / 2, (H - vh * sc) / 2, vw * sc, vh * sc); }
+          if (vw) fitDraw(v, vw, vh, 1);
         } else {
           const im = s.img, zoom = 1 + 0.05 * (t / s.sec); // gerak perlahan (Ken Burns)
-          const sc = Math.max(W / im.width, H / im.height) * zoom;
-          x.drawImage(im, (W - im.width * sc) / 2, (H - im.height * sc) / 2, im.width * sc, im.height * sc);
+          fitDraw(im, im.width, im.height, zoom);
         }
         if (s.badge) {
           x.font = "800 34px Arial, sans-serif"; const bw = x.measureText(s.badge).width + 40;
@@ -331,9 +352,10 @@
           x.fillStyle = "#1d2421"; x.textAlign = "left"; x.fillText(s.badge, 60, 82);
         }
         if (s.label) {
-          x.font = "700 24px Arial, sans-serif"; const lw = x.measureText(s.label).width + 32;
-          x.fillStyle = "rgba(0,0,0,.6)"; x.fillRect(40, 108, lw, 42);
-          x.fillStyle = "#fff"; x.fillText(s.label, 56, 138);
+          x.font = "700 24px Arial, sans-serif";
+          const ls = wrap(s.label, W - 112);
+          ls.forEach((l, i) => { const lw = x.measureText(l).width + 32, y = 108 + i * 44;
+            x.fillStyle = "rgba(0,0,0,.6)"; x.fillRect(40, y, lw, 42); x.fillStyle = "#fff"; x.fillText(l, 56, y + 30); });
         }
       }
       x.globalAlpha = 1;
