@@ -410,15 +410,18 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .vmix{display:flex;gap:6px;align-items:center;margin-top:4px;font-size:13px}
 .card-s{scroll-margin-top:84px}
 
-/* Pemilih video untuk video gabungan */
-.mkvidbar{display:flex;gap:8px;margin:2px 0 6px}
+/* Pemilih & penyusun video untuk video gabungan */
+.mkvidbar{display:flex;gap:8px;margin:4px 0 8px;flex-wrap:wrap}
 .mkvid{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:6px}
-.mkvid li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--slot)}
-.mkvid li.off{opacity:.55}
-.mkvid input{width:22px;height:22px;accent-color:var(--accent)}
+.mkvid li{display:grid;grid-template-columns:34px 72px 1fr auto;gap:10px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:10px;background:var(--slot);cursor:pointer}
+.mkvid li.off{opacity:.6}
+.mkvid li.sep{display:block;cursor:default;border:0;background:none;padding:6px 2px 0;font-size:12px;color:var(--muted);opacity:1}
+.mkvid .no{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font:800 16px var(--f-display);background:var(--accent);color:var(--accent-ink)}
+.mkvid li.off .no{background:none;border:2px dashed var(--muted);color:var(--muted)}
+.mkvid .th{width:72px;height:44px;border-radius:6px;object-fit:cover;background:#000;display:grid;place-items:center;color:#fff;pointer-events:none}
 .mkvid .t{min-width:0}
-.mkvid .t b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mkvid .t b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:14px;line-height:1.3;word-break:break-word}
 .mkvid .t small{color:var(--muted);font-size:12px}
 .mkvid .mv{display:flex;gap:4px}
-.mkvid .mv button{width:36px;height:36px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:14px}
-.mkvid .mv button:disabled{opacity:.35}
+.mkvid .mv button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:13px}
+.mkvid .mv button:disabled{opacity:.3}

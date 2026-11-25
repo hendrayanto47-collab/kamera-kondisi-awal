@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.23.0 · 26 Nov 2026";
+const APP_VERSION = "2.23.1 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1286,6 +1286,7 @@ function renderVid() {
 $("vidList").addEventListener("change", e => {
   const mx = e.target.closest("[data-vmix]"); if (!mx) return;
   const v = videos.get(mx.dataset.vmix); if (!v) return;
+  if (mx.checked) { const sel = freeVids().filter(([kk, vv]) => kk !== mx.dataset.vmix && mixOn(vv)); renumber(sel); v.ord = sel.length; } else v.ord = undefined;
   v.mix = mx.checked; persistVid(mx.dataset.vmix); renderMkVid(); updateEstimate();
 });
 $("vidList").addEventListener("click", e => {
@@ -1372,29 +1373,42 @@ const mixOn = v => (v.mix !== undefined ? v.mix : !isReportVid(v));
 const mixOrder = (a, b) => (a[1].ord ?? 1e15) - (b[1].ord ?? 1e15) || a[1].t - b[1].t || (a[1].title || "").localeCompare(b[1].title || "", "id", { numeric: true });
 const freeVids = () => [...videos.entries()].filter(([, v]) => !v.room).sort(mixOrder);
 const mixKeys = () => freeVids().filter(([, v]) => mixOn(v)).map(([k]) => k);
+/* Susun video gabungan: ketuk video sesuai urutan (yang diketuk pertama = bagian 1), ketuk lagi untuk melepas.
+   Video yang dipilih tampil di atas dengan nomor urut; ▲▼ untuk menggeser. */
 function renderMkVid() {
-  const list = freeVids();
-  $("mkVid").innerHTML = list.map(([k, v], i) => `<li class="${mixOn(v) ? "" : "off"}"><input type="checkbox" data-mkv="${esc(k)}"${mixOn(v) ? " checked" : ""} aria-label="Pakai ${esc(v.title || "video")}">
-    <span class="t"><b>${esc(v.title || "Video")}</b><small>${tgl(v.t)} ${jam(v.t)} · ${fmtDur(v.dur || 0)}${v.remote && !v.blob ? " · ☁ di Drive" : ""}</small></span>
-    <span class="mv"><button type="button" data-mkup="${i}" ${i ? "" : "disabled"} aria-label="Naikkan">▲</button><button type="button" data-mkdn="${i}" ${i < list.length - 1 ? "" : "disabled"} aria-label="Turunkan">▼</button></span></li>`).join("")
-    || `<li class="off"><span></span><span class="t"><small>Belum ada video bebas. Unggah dari galeri atau rekam dulu.</small></span><span></span></li>`;
+  const all = freeVids(), sel = all.filter(([, v]) => mixOn(v)), rest = all.filter(([, v]) => !mixOn(v));
+  const row = ([k, v], n) => `<li class="${n ? "" : "off"}" data-mkv="${esc(k)}">
+    <span class="no">${n || "+"}</span>
+    ${v.url ? `<video class="th" src="${v.url}#t=0.5" muted playsinline preload="metadata"></video>` : `<span class="th">☁</span>`}
+    <span class="t"><b>${esc(v.title || "Video")}</b><small>${fmtDur(v.dur || 0)}</small></span>
+    ${n ? `<span class="mv"><button type="button" data-mkup="${n - 1}" ${n > 1 ? "" : "disabled"} aria-label="Naikkan">▲</button><button type="button" data-mkdn="${n - 1}" ${n < sel.length ? "" : "disabled"} aria-label="Turunkan">▼</button></span>` : "<span></span>"}</li>`;
+  $("mkVid").innerHTML = sel.map((e, i) => row(e, i + 1)).join("")
+    + (rest.length ? `<li class="sep">Belum dipakai — ketuk untuk menambahkan sebagai bagian berikutnya</li>` + rest.map(e => row(e, 0)).join("") : "")
+    || `<li class="sep">Belum ada video bebas. Unggah dari galeri atau rekam dulu.</li>`;
 }
-$("mkVid").addEventListener("change", e => {
-  const c = e.target.closest("[data-mkv]"); if (!c) return;
-  const v = videos.get(c.dataset.mkv); v.mix = c.checked; persistVid(c.dataset.mkv);
-  c.closest("li").classList.toggle("off", !c.checked); updateEstimate();
-  const box = $("vidList").querySelector(`[data-vmix="${CSS.escape(c.dataset.mkv)}"]`); if (box) box.checked = c.checked;
-});
+const renumber = list => list.forEach(([k, v], n) => { if (v.ord !== n) { v.ord = n; persistVid(k); } });
+function mkVidChanged() { renderMkVid(); updateEstimate(); renderVidChecks(); }
+function renderVidChecks() { $("vidList").querySelectorAll("[data-vmix]").forEach(b => { const v = videos.get(b.dataset.vmix); if (v) b.checked = mixOn(v); }); }
 $("mkVid").addEventListener("click", e => {
-  const up = e.target.closest("[data-mkup]"), dn = e.target.closest("[data-mkdn]"); if (!up && !dn) return;
-  const list = freeVids(), i = +(up ? up.dataset.mkup : dn.dataset.mkdn), j = up ? i - 1 : i + 1;
-  if (j < 0 || j >= list.length) return;
-  [list[i], list[j]] = [list[j], list[i]];
-  list.forEach(([k, v], n) => { if (v.ord !== n) { v.ord = n; persistVid(k); } });
-  renderMkVid(); updateEstimate();
+  const up = e.target.closest("[data-mkup]"), dn = e.target.closest("[data-mkdn]");
+  const sel = freeVids().filter(([, v]) => mixOn(v));
+  if (up || dn) {
+    const i = +(up ? up.dataset.mkup : dn.dataset.mkdn), j = up ? i - 1 : i + 1;
+    if (j < 0 || j >= sel.length) return;
+    [sel[i], sel[j]] = [sel[j], sel[i]]; renumber(sel); return mkVidChanged();
+  }
+  const li = e.target.closest("li[data-mkv]"); if (!li) return;
+  const k = li.dataset.mkv, v = videos.get(k);
+  if (mixOn(v)) { v.mix = false; v.ord = undefined; persistVid(k); renumber(sel.filter(([kk]) => kk !== k)); }
+  else { renumber(sel); v.mix = true; v.ord = sel.length; persistVid(k); toast(`Ditambahkan sebagai bagian ${sel.length + 1}.`); }
+  mkVidChanged();
 });
-$("mkVidAll").addEventListener("click", () => { freeVids().forEach(([k, v]) => { v.mix = true; persistVid(k); }); render(); });
-$("mkVidNone").addEventListener("click", () => { freeVids().forEach(([k, v]) => { v.mix = false; persistVid(k); }); render(); });
+$("mkVidAll").addEventListener("click", () => { // semua, urut menurut waktu rekam
+  const all = [...videos.entries()].filter(([, v]) => !v.room).sort((a, b) => a[1].t - b[1].t || (a[1].title || "").localeCompare(b[1].title || "", "id", { numeric: true }));
+  all.forEach(([k, v], n) => { v.mix = true; v.ord = n; persistVid(k); }); mkVidChanged();
+});
+$("mkVidNone").addEventListener("click", () => { freeVids().forEach(([k, v]) => { v.mix = false; v.ord = undefined; persistVid(k); }); mkVidChanged();
+  toast("Kosong. Sekarang ketuk video satu per satu sesuai urutan: yang pertama diketuk jadi bagian 1."); });
 
 // Video laporan otomatis dari foto
 function reportScenes(scope, sec) {
