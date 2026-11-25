@@ -281,7 +281,7 @@
     $("mkMsg").textContent = "Menyiapkan foto & video…";
     // Suara klip ikut direkam lewat Web Audio (tidak terdengar di speaker); tiap klip punya pengatur volume untuk fade
     let ac = null, dest = null;
-    if (scenes.some(s => s.type === "clip")) {
+    if (scenes.some(s => s.type === "clip" || s.type === "logo")) {
       try { ac = new (window.AudioContext || window.webkitAudioContext)(); dest = ac.createMediaStreamDestination(); } catch (e) { ac = null; }
     }
     /* Foto & video disiapkan satu per satu (adegan ini + berikutnya saja), bukan semuanya di awal:
@@ -296,13 +296,14 @@
         if (ac) { try { const g = ac.createGain(); g.gain.value = 0; ac.createMediaElementSource(v).connect(g).connect(dest); s.gain = g; } catch (e) { v.muted = true; } } else v.muted = true;
         s.vid = v;
       })();
+      else if (s.type === "logo") s.ready = prepLogo(s);
       else if (s.blob) s.ready = createImageBitmap(s.blob).then(b => { s.img = b; }, () => {});
       else s.ready = Promise.resolve();
       return s.ready;
     };
     const free = s => {
       if (s.vid) { s.vid.pause(); s.vid.removeAttribute("src"); try { s.vid.load(); } catch (e) {} URL.revokeObjectURL(s.url); s.vid = null; }
-      if (s.img && s.img.close) s.img.close(); s.img = null; s.ready = null;
+      if (s.img && s.img.close) s.img.close(); s.img = null; s.ready = null; s.logo = s.shine = null;
     };
     const FADE = 0.6;
     const total = scenes.reduce((a, s) => a + s.sec, 0);
@@ -337,7 +338,128 @@
       if (!("filter" in x)) { x.fillStyle = "rgba(0,0,0,.5)"; x.fillRect(0, 0, W, H); }
       const sc = contain * zoom; x.drawImage(src, (W - sw * sc) / 2, (H - sh * sc) / 2, sw * sc, sh * sc);
     }
+    /* ---------- Pembuka logo sekolah: kepingan logo berkumpul, hentakan cahaya, cincin berputar, kilau, nama sekolah ---------- */
+    async function prepLogo(s) {
+      try {
+        const bm = await createImageBitmap(await (await fetch(s.src)).blob());
+        const L = Math.round(Math.min(W, H) * (H > W ? 0.62 : 0.4));
+        const sc = Math.min(L / bm.width, L / bm.height), lw = Math.round(bm.width * sc), lh = Math.round(bm.height * sc);
+        // logo berlatar penuh (bukan PNG transparan): diberi cakram putih agar tampil rapi
+        const t0 = document.createElement("canvas"); t0.width = bm.width; t0.height = bm.height; const tx = t0.getContext("2d"); tx.drawImage(bm, 0, 0);
+        const px = (x0, y0) => tx.getImageData(x0, y0, 1, 1).data[3];
+        const opaque = [px(0, 0), px(bm.width - 1, 0), px(0, bm.height - 1), px(bm.width - 1, bm.height - 1)].every(a => a > 240);
+        const c = document.createElement("canvas"); c.width = L; c.height = L; const cx = c.getContext("2d");
+        if (opaque) { cx.save(); cx.beginPath(); cx.arc(L / 2, L / 2, L / 2, 0, Math.PI * 2); cx.clip(); cx.fillStyle = "#fff"; cx.fillRect(0, 0, L, L);
+          const s2 = Math.min(L * 0.86 / bm.width, L * 0.86 / bm.height); cx.drawImage(bm, (L - bm.width * s2) / 2, (L - bm.height * s2) / 2, bm.width * s2, bm.height * s2); cx.restore(); }
+        else cx.drawImage(bm, (L - lw) / 2, (L - lh) / 2, lw, lh);
+        s.logo = c; s.L = L;
+        let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+        const N = 6; s.tiles = [];
+        for (let gy = 0; gy < N; gy++) for (let gx = 0; gx < N; gx++) {
+          const ang = rnd() * Math.PI * 2, dist = Math.max(W, H) * (0.55 + rnd() * 0.5);
+          s.tiles.push({ gx, gy, N, dx: Math.cos(ang) * dist, dy: Math.sin(ang) * dist, rot: (rnd() - 0.5) * Math.PI * 3, d: rnd() * 0.25 });
+        }
+        s.parts = Array.from({ length: 70 }, () => ({ a: rnd() * Math.PI * 2, r: 0.4 + rnd() * 0.8, sp: 0.6 + rnd() * 0.8, z: 1 + rnd() * 2.5 }));
+        s.shine = document.createElement("canvas"); s.shine.width = L; s.shine.height = L;
+      } catch (e) { s.logo = null; }
+    }
+    function logoSfx() { // efek suara sintetis: desir, klik mekanis, hentakan, kilau
+      if (!ac || !dest) return;
+      const now = ac.currentTime, out = ac.createGain(); out.gain.value = 0.7; out.connect(dest);
+      const noise = dur => { const b = ac.createBuffer(1, Math.round(ac.sampleRate * dur), ac.sampleRate), d = b.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const n = ac.createBufferSource(); n.buffer = b; return n; };
+      // desir naik (0–0.9 dtk)
+      { const n = noise(1.1), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = "bandpass"; f.Q.value = 1.2;
+        f.frequency.setValueAtTime(250, now); f.frequency.exponentialRampToValueAtTime(4500, now + 0.9);
+        g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.5, now + 0.8); g.gain.exponentialRampToValueAtTime(0.0001, now + 1.05);
+        n.connect(f).connect(g).connect(out); n.start(now); n.stop(now + 1.1); }
+      // klik mekanis saat kepingan menyatu
+      for (let i = 0; i < 9; i++) { const t = now + 0.3 + i * 0.07 + Math.random() * 0.03, o = ac.createOscillator(), g = ac.createGain();
+        o.type = "square"; o.frequency.value = 900 + Math.random() * 1400;
+        g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035); o.connect(g).connect(out); o.start(t); o.stop(t + 0.04); }
+      // hentakan bass (0.95 dtk)
+      { const t = now + 0.95, o = ac.createOscillator(), g = ac.createGain(); o.type = "sine";
+        o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.7);
+        g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9); o.connect(g).connect(out); o.start(t); o.stop(t + 0.95);
+        const n = noise(0.5), f = ac.createBiquadFilter(), g2 = ac.createGain(); f.type = "lowpass"; f.frequency.value = 1800;
+        g2.gain.setValueAtTime(0.6, t); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.45); n.connect(f).connect(g2).connect(out); n.start(t); n.stop(t + 0.5); }
+      // kilau (1.6 dtk) + nada latar lembut
+      [1318.5, 1760, 2637, 3520].forEach((fr, i) => { const t = now + 1.6 + i * 0.06, o = ac.createOscillator(), g = ac.createGain(); o.type = "sine"; o.frequency.value = fr;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4); o.connect(g).connect(out); o.start(t); o.stop(t + 1.5); });
+      [220, 277.2, 329.6].forEach(fr => { const t = now + 1.0, o = ac.createOscillator(), g = ac.createGain(); o.type = "triangle"; o.frequency.value = fr;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.6); g.gain.setValueAtTime(0.06, t + 2.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 3.2);
+        o.connect(g).connect(out); o.start(t); o.stop(t + 3.3); });
+    }
+    function paintLogo(s, t) {
+      const L = s.L, cx = W / 2, cy = H * (H > W ? 0.42 : 0.42), IMP = 0.95;
+      const bg = x.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
+      bg.addColorStop(0, "#2a2f2c"); bg.addColorStop(0.6, "#121614"); bg.addColorStop(1, "#050606");
+      x.fillStyle = bg; x.fillRect(0, 0, W, H);
+      if (!s.logo) return;
+      // sinar berputar di belakang logo
+      if (t > IMP) { const a = Math.min(1, (t - IMP) / 0.5) * 0.16;
+        x.save(); x.translate(cx, cy); x.rotate((t - IMP) * 0.25);
+        for (let i = 0; i < 14; i++) { x.rotate(Math.PI * 2 / 14); x.fillStyle = `rgba(242,183,5,${a})`;
+          x.beginPath(); x.moveTo(0, 0); x.lineTo(-L * 0.12, -Math.max(W, H)); x.lineTo(L * 0.12, -Math.max(W, H)); x.closePath(); x.fill(); }
+        x.restore(); }
+      // partikel: berkumpul ke tengah, lalu memercik keluar setelah hentakan
+      for (const p of s.parts) {
+        const R = Math.max(W, H) * 0.7 * p.r;
+        let rr, al;
+        if (t < IMP) { const q = ease(t / IMP); rr = R * (1 - q) + L * 0.3 * q; al = 0.3 + 0.7 * q; }
+        else { const q = (t - IMP) * p.sp; rr = L * 0.35 + q * Math.max(W, H) * 0.6; al = Math.max(0, 1 - q * 1.4); }
+        if (al <= 0) continue;
+        x.fillStyle = `rgba(255,214,90,${al})`; x.beginPath(); x.arc(cx + Math.cos(p.a + t * 0.6) * rr, cy + Math.sin(p.a + t * 0.6) * rr, p.z, 0, Math.PI * 2); x.fill();
+      }
+      // kepingan logo menyatu (efek "transformer")
+      if (t < IMP) {
+        const ts = L / 6;
+        for (const k of s.tiles) {
+          const q = ease((t - 0.1 - k.d) / 0.7); if (q <= 0) continue;
+          const fx = cx - L / 2 + k.gx * ts + ts / 2, fy = cy - L / 2 + k.gy * ts + ts / 2;
+          x.save(); x.globalAlpha = Math.min(1, q * 2.5); x.translate(fx + k.dx * (1 - q), fy + k.dy * (1 - q)); x.rotate(k.rot * (1 - q));
+          x.drawImage(s.logo, k.gx * ts, k.gy * ts, ts, ts, -ts / 2 - 0.5, -ts / 2 - 0.5, ts + 1, ts + 1);
+          if (q < 1) { x.strokeStyle = `rgba(242,183,5,${(1 - q) * 0.9})`; x.lineWidth = 2; x.strokeRect(-ts / 2, -ts / 2, ts, ts); }
+          x.restore();
+        }
+      } else {
+        const k = t - IMP, bounce = 1 + 0.1 * Math.exp(-k * 5) * Math.cos(k * 16), d = L * bounce;
+        // cincin emas tersegmen berputar
+        x.save(); x.translate(cx, cy); x.lineCap = "round";
+        const ra = Math.min(1, k / 0.4);
+        [[0.62, 1, 5, 7], [0.7, -0.6, 3, 11]].forEach(([rf, sp, lw, seg]) => {
+          x.strokeStyle = `rgba(242,183,5,${0.85 * ra})`; x.lineWidth = lw;
+          for (let i = 0; i < seg; i++) { const a0 = i * Math.PI * 2 / seg + k * sp; x.beginPath(); x.arc(0, 0, L * rf * (0.9 + 0.1 * ra), a0, a0 + Math.PI * 2 / seg * 0.62); x.stroke(); }
+        });
+        x.restore();
+        x.save(); x.shadowColor = "rgba(242,183,5,.8)"; x.shadowBlur = 30 + 30 * Math.exp(-k * 2);
+        x.drawImage(s.logo, cx - d / 2, cy - d / 2, d, d); x.restore();
+        // kilau melintas di atas logo
+        if (k > 0.55 && k < 1.35) {
+          const sh = s.shine, sx2 = sh.getContext("2d"), p = (k - 0.55) / 0.8;
+          sx2.clearRect(0, 0, L, L); sx2.globalCompositeOperation = "source-over"; sx2.drawImage(s.logo, 0, 0);
+          sx2.globalCompositeOperation = "source-atop";
+          const gx = -L + p * L * 3, g = sx2.createLinearGradient(gx, 0, gx + L * 0.5, L * 0.5);
+          g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.5, "rgba(255,255,255,.75)"); g.addColorStop(1, "rgba(255,255,255,0)");
+          sx2.fillStyle = g; sx2.fillRect(0, 0, L, L); sx2.globalCompositeOperation = "source-over";
+          x.drawImage(sh, cx - d / 2, cy - d / 2, d, d);
+        }
+        // gelombang kejut + kilat
+        const sw = k / 0.7; if (sw < 1) { x.strokeStyle = `rgba(255,230,150,${1 - sw})`; x.lineWidth = 8 * (1 - sw) + 1;
+          x.beginPath(); x.arc(cx, cy, L * 0.5 + sw * Math.max(W, H) * 0.6, 0, Math.PI * 2); x.stroke(); }
+        if (k < 0.3) { x.fillStyle = `rgba(255,248,225,${0.75 * (1 - k / 0.3)})`; x.fillRect(0, 0, W, H); }
+        // nama sekolah
+        const a1 = ease((k - 0.75) / 0.6), a2 = ease((k - 1.0) / 0.6), P = H > W;
+        x.textAlign = "center"; x.globalAlpha = a1; x.fillStyle = "#fff"; x.font = `800 ${P ? 48 : 52}px Arial, sans-serif`;
+        const ty = cy + L * 0.5 + (P ? 120 : 92) + (1 - a1) * 30;
+        const lines = wrap(s.title, W - 80); lines.forEach((l, i) => x.fillText(l, cx, ty + i * (P ? 58 : 60)));
+        x.globalAlpha = a2; x.fillStyle = "#f2b705"; x.font = `700 ${P ? 24 : 26}px Arial, sans-serif`;
+        x.fillText(s.sub || "", cx, ty + lines.length * (P ? 58 : 60) + 6);
+        x.globalAlpha = 1; x.textAlign = "left";
+      }
+    }
     function paintScene(s, t, i) {
+      if (s.type === "logo") return paintLogo(s, t);
       const P = H > W, m = P ? 56 : 110;
       if (s.type === "title") {
         const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, "#26302c"); g.addColorStop(1, "#0d1110");
@@ -403,6 +525,7 @@
       if (scenes[i + 1]) prep(scenes[i + 1]);
       if (!started) { r.start(1000); started = true; } else if (r.state === "paused") r.resume();
       if (s.vid) { s.vid.play().catch(() => { s.vid.muted = true; s.vid.play().catch(() => {}); }); }
+      if (s.type === "logo") logoSfx();
       const t0 = performance.now();
       await new Promise(resolve => {
         const tick = () => {

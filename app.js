@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.23.2 · 26 Nov 2026";
+const APP_VERSION = "2.24.0 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1480,6 +1480,7 @@ function reportScenes(scope, sec) {
     }
   }
   head("REVITALISASI SD 2026", school, [idLine().replace(school + "  ·  ", "")], 3); // tanpa tanggal: video galeri bisa saja rekaman lama
+  if (profil.logo && $("mkLogo").checked) sc.unshift({ type: "logo", src: profil.logo, title: school, sub: `NPSN ${profil.npsn || "-"}${profil.wil ? "  ·  " + profil.wil : ""}`, sec: 4.2 });
   return sc;
 }
 function updateEstimate() {
@@ -1488,6 +1489,7 @@ function updateEstimate() {
   const clip = /^(rv|vb)/.test(scp);
   $("mkSecWrap").hidden = clip; $("mkClipWrap").hidden = !clip && !kv; $("mkVerWrap").hidden = !clip && !keg;
   $("mkTitleWrap").hidden = scp !== "vb" && !keg; $("mkKegWrap").hidden = !keg; $("mkVidWrap").hidden = scp !== "vb" && !kv;
+  renderLogo();
   const n = sc.filter(s => s.type === "clip" || s.type === "photo").length, dur = sc.reduce((a, s) => a + s.sec, 0);
   $("mkEst").textContent = n ? `${keg ? `${sc.filter(s => s.type === "photo").length} foto${kv ? ` + ${sc.filter(s => s.type === "clip").length} video` : ""}` : `${n} ${clip ? "video" : "foto"}`} · durasi video ±${fmtDur(dur)}. Pembuatan butuh waktu sama dengan durasinya; biarkan layar menyala.`
     : keg ? "Centang minimal satu judul kegiatan."
@@ -1511,6 +1513,34 @@ function kegToVideo(only) {
     : "Isi video: Foto kegiatan. Centang judul yang mau dipakai, lalu ketuk Buat video.");
 }
 $("kegToVid").addEventListener("click", () => kegToVideo(null));
+/* ---------- Logo sekolah (untuk animasi pembuka video) ----------
+   Disimpan kecil (maks. 512 px, PNG agar latar transparan tetap) di profil, jadi ikut tersinkron ke HP lain. */
+function renderLogo() {
+  const has = !!profil.logo;
+  document.querySelectorAll(".logoprev").forEach(i => { i.hidden = !has; if (has) i.src = profil.logo; });
+  document.querySelectorAll("[data-logodel]").forEach(b => (b.hidden = !has));
+  document.querySelectorAll("[data-logopick]").forEach(b => (b.textContent = has ? "Ganti logo" : "Pilih logo"));
+  $("mkLogo").disabled = !has; if (!has) $("mkLogo").checked = false;
+  $("mkLogoHint").textContent = has ? "Logo tersusun dari kepingan, menyala, lalu nama sekolah muncul (±4 detik)." : "Belum ada logo. Ketuk Pilih logo (foto/gambar logo sekolah).";
+}
+document.addEventListener("click", e => {
+  if (e.target.closest("[data-logopick]")) { $("logoFile").value = ""; $("logoFile").click(); }
+  if (e.target.closest("[data-logodel]")) { delete profil.logo; saveState(); renderLogo(); cloudSoon(); toast("Logo dihapus."); }
+});
+$("logoFile").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  try {
+    const img = await loadImage(f), sc = Math.min(1, 512 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas"); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    profil.logo = c.toDataURL("image/png");
+    if (profil.logo.length > 600000) profil.logo = c.toDataURL("image/webp", 0.9).startsWith("data:image/webp") ? c.toDataURL("image/webp", 0.9) : c.toDataURL("image/jpeg", 0.9);
+    saveState(); renderLogo(); cloudSoon(); $("mkLogo").checked = true;
+    toast("Logo sekolah tersimpan. Dipakai sebagai pembuka video gabungan.");
+  } catch (er) { toast("Gambar logo tidak bisa dibaca. Coba PNG atau JPG."); }
+});
+renderLogo();
+
 // Langsung ke pembuat video dengan isi "Gabungan video pilihan"
 function vidToMix() {
   if (!mixKeys().length) return toast("Belum ada video yang dicentang \"Masuk video gabungan\". Unggah video dari galeri atau rekam dulu.");
@@ -1528,6 +1558,7 @@ $("mkClip").addEventListener("change", updateEstimate);
 $("mkVer").addEventListener("change", updateEstimate);
 $("mkKegVid").addEventListener("change", updateEstimate);
 $("mkKeg").addEventListener("change", updateEstimate);
+$("mkLogo").addEventListener("change", updateEstimate);
 $("mkBtn").addEventListener("click", async () => {
   const scope0 = $("mkScope").value;
   if (scope0.startsWith("rv")) { // klip dari HP lain diambil dulu dari Drive
@@ -2394,7 +2425,7 @@ function applyRemoteState(j) {
     for (const [id, k] of Object.entries(fmap)) $(id).value = profil[k] || "";
     $("pGaya").value = profil.gaya || "lengkap"; $("pPeta").value = profil.peta || "satelit";
     if (window.KKAGeo && KKAGeo.setSource) KKAGeo.setSource(profil.peta || "satelit");
-    renderHeader();
+    renderHeader(); if (typeof renderLogo === "function") renderLogo();
   } finally { cloudApplying = false; }
 }
 

@@ -425,3 +425,10 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .mkvid .mv{display:flex;gap:4px}
 .mkvid .mv button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:13px}
 .mkvid .mv button:disabled{opacity:.3}
+
+/* Logo sekolah */
+.logorow{display:flex;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--slot);margin:6px 0}
+.logorow>div{display:grid;gap:4px;min-width:0}
+.logorow small{color:var(--muted);font-size:12px}
+.logorow .acts{display:flex;gap:8px;flex-wrap:wrap}
+.logoprev{width:64px;height:64px;object-fit:contain;flex:0 0 64px;border-radius:8px;background:repeating-conic-gradient(#0000 0 25%,#8882 0 50%) 0 0/12px 12px}

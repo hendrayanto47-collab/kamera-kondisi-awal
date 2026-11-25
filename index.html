@@ -129,6 +129,10 @@
         <label class="f mk-sec" id="mkClipWrap" hidden>Detik/video<select id="mkClip"><option value="4">4</option><option value="6" selected>6</option><option value="full">Penuh</option></select></label>
         <label class="f mk-sec" id="mkSecWrap">Detik/foto<select id="mkSec"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
       </div>
+      <div class="logorow mklogo"><img class="logoprev" alt="Logo sekolah" hidden><div>
+        <label class="chk" style="margin:0"><input type="checkbox" id="mkLogo" checked> <b>Pembuka: animasi logo sekolah + efek suara</b></label>
+        <small id="mkLogoHint"></small>
+        <div class="acts"><button class="btn" type="button" data-logopick>Pilih logo</button></div></div></div>
       <div id="mkVidWrap" hidden>
         <p class="hint" style="margin:6px 0 2px"><b>Susun video:</b> ketuk <b>Kosongkan</b>, lalu ketuk video satu per satu sesuai urutan — yang diketuk pertama jadi <b>bagian 1</b>, berikutnya bagian 2, dst. Ketuk lagi untuk melepas, ▲▼ untuk menggeser.</p>
         <div class="mkvidbar"><button class="btn" type="button" id="mkVidNone">Kosongkan</button><button class="btn ghost" type="button" id="mkVidAll">Semua, urut waktu</button></div>
@@ -152,6 +156,8 @@
     <section class="card-s" aria-labelledby="hProfil">
       <h2 id="hProfil">Identitas sekolah</h2>
       <label class="f">Nama sekolah<input type="text" id="pNama" autocomplete="off"></label>
+      <div class="logorow"><img class="logoprev" alt="Logo sekolah" hidden><div><b>Logo sekolah</b><small>Untuk animasi pembuka video. Paling bagus PNG berlatar transparan.</small>
+        <div class="acts"><button class="btn" type="button" data-logopick>Pilih logo</button><button class="btn ghost" type="button" data-logodel hidden>Hapus</button></div></div></div>
       <div class="row2">
         <label class="f">NPSN<input type="text" id="pNpsn" inputmode="numeric" autocomplete="off"></label>
         <label class="f">Kab./Kota, Provinsi<input type="text" id="pWil" autocomplete="off"></label>
@@ -348,6 +354,7 @@
     <button class="btn ghost" id="mkCancel" type="button">Batalkan</button>
   </div>
 </div>
+<input type="file" id="logoFile" accept="image/*" hidden>
 <input type="file" id="vidPicker" accept="video/*" capture="environment" hidden>
 <input type="file" id="picker" accept="image/*" capture="environment" hidden>
 <input type="file" id="galPick" accept="image/*" hidden>
