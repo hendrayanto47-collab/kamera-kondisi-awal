@@ -275,35 +275,45 @@
     mk = { cancel: false };
     const cv = $("mkCanvas"); cv.width = W; cv.height = H;
     const x = cv.getContext("2d");
+    const snap = document.createElement("canvas"); snap.width = W; snap.height = H; const sx = snap.getContext("2d");
     $("mk").hidden = false; document.documentElement.classList.add("vf-open");
     keepAwake(true);
-    // Siapkan gambar
     $("mkMsg").textContent = "Menyiapkan foto & video…";
-    // Klip video: diputar waktu-nyata ke kanvas; suaranya ikut direkam lewat Web Audio (tidak terdengar di speaker)
+    // Suara klip ikut direkam lewat Web Audio (tidak terdengar di speaker); tiap klip punya pengatur volume untuk fade
     let ac = null, dest = null;
     if (scenes.some(s => s.type === "clip")) {
       try { ac = new (window.AudioContext || window.webkitAudioContext)(); dest = ac.createMediaStreamDestination(); } catch (e) { ac = null; }
     }
-    for (const s of scenes) {
-      if (s.type === "clip") {
+    /* Foto & video disiapkan satu per satu (adegan ini + berikutnya saja), bukan semuanya di awal:
+       HP tidak sanggup membuka puluhan video/foto besar sekaligus (hasilnya layar hitam atau macet). */
+    const prep = s => {
+      if (s.ready) return s.ready;
+      if (s.type === "clip") s.ready = (async () => {
         const v = document.createElement("video");
         v.playsInline = true; v.preload = "auto"; v.src = s.url = URL.createObjectURL(s.blob);
-        await new Promise(res => { v.onloadeddata = res; v.onerror = res; setTimeout(res, 4000); });
-        if (ac) { try { ac.createMediaElementSource(v).connect(dest); } catch (e) { v.muted = true; } } else v.muted = true;
+        await new Promise(res => { v.oncanplay = res; v.onerror = res; setTimeout(res, 15000); });
+        if (s.start) { try { v.currentTime = s.start; await new Promise(r => { v.onseeked = r; setTimeout(r, 3000); }); } catch (e) {} }
+        if (ac) { try { const g = ac.createGain(); g.gain.value = 0; ac.createMediaElementSource(v).connect(g).connect(dest); s.gain = g; } catch (e) { v.muted = true; } } else v.muted = true;
         s.vid = v;
-      } else if (s.blob) s.img = await createImageBitmap(s.blob);
-    }
-    const FADE = 0.5;
+      })();
+      else if (s.blob) s.ready = createImageBitmap(s.blob).then(b => { s.img = b; }, () => {});
+      else s.ready = Promise.resolve();
+      return s.ready;
+    };
+    const free = s => {
+      if (s.vid) { s.vid.pause(); s.vid.removeAttribute("src"); try { s.vid.load(); } catch (e) {} URL.revokeObjectURL(s.url); s.vid = null; }
+      if (s.img && s.img.close) s.img.close(); s.img = null; s.ready = null;
+    };
+    const FADE = 0.6;
     const total = scenes.reduce((a, s) => a + s.sec, 0);
     const mime = pickMime();
     const cs = cv.captureStream(FPS);
     if (dest) dest.stream.getAudioTracks().forEach(t => cs.addTrack(t));
     let r;
-    try { r = new MediaRecorder(cs, mime ? { mimeType: mime, videoBitsPerSecond: 3000000 } : {}); } catch (e) { r = new MediaRecorder(cs); }
+    try { r = new MediaRecorder(cs, mime ? { mimeType: mime, videoBitsPerSecond: o.portrait ? 3500000 : 4000000 } : {}); } catch (e) { r = new MediaRecorder(cs); }
     const chunks = [];
     r.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
     const done = new Promise(res => (r.onstop = res));
-    const starts = []; let acc = 0; for (const s of scenes) { starts.push(acc); acc += s.sec; }
 
     // Judul panjang dipecah per baris agar tidak terpotong (penting di format tegak)
     function wrap(t, maxW) {
@@ -312,82 +322,110 @@
         if (x.measureText(tryL).width > maxW && line) { out.push(line); line = w; } else line = tryL; }
       if (line) out.push(line); return out.slice(0, 4);
     }
+    const ease = t => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+    function rrect(px, py, w, h, rad) { x.beginPath(); if (x.roundRect) x.roundRect(px, py, w, h, rad); else x.rect(px, py, w, h); x.fill(); }
     // Isi berbeda rasio (foto mendatar di video tegak, video tegak di video mendatar): latar buram + gambar utuh di tengah
-    function fitDraw(src, sw, sh, zoom) {
+    function fitDraw(src, sw, sh, zoom, panX, panY) {
       const cover = Math.max(W / sw, H / sh), contain = Math.min(W / sw, H / sh);
-      if (contain / cover > 0.7) { const sc = cover * zoom; x.drawImage(src, (W - sw * sc) / 2, (H - sh * sc) / 2, sw * sc, sh * sc); return; }
-      x.save(); try { x.filter = "blur(24px) brightness(0.55)"; } catch (e) {}
-      const bc = cover * 1.1; x.drawImage(src, (W - sw * bc) / 2, (H - sh * bc) / 2, sw * bc, sh * bc);
+      if (contain / cover > 0.7) {
+        const sc = cover * zoom, dw = sw * sc, dh = sh * sc;
+        x.drawImage(src, (W - dw) / 2 + (dw - W) / 2 * (panX || 0), (H - dh) / 2 + (dh - H) / 2 * (panY || 0), dw, dh); return;
+      }
+      x.save(); try { x.filter = "blur(26px) brightness(0.5) saturate(1.2)"; } catch (e) {}
+      const bc = cover * 1.15; x.drawImage(src, (W - sw * bc) / 2, (H - sh * bc) / 2, sw * bc, sh * bc);
       x.restore(); x.filter = "none";
       if (!("filter" in x)) { x.fillStyle = "rgba(0,0,0,.5)"; x.fillRect(0, 0, W, H); }
       const sc = contain * zoom; x.drawImage(src, (W - sw * sc) / 2, (H - sh * sc) / 2, sw * sc, sh * sc);
     }
-    function paintScene(s, t, alpha) {
-      x.globalAlpha = alpha;
-      const P = H > W, m = P ? 56 : 120;
+    function paintScene(s, t, i) {
+      const P = H > W, m = P ? 56 : 110;
       if (s.type === "title") {
-        x.fillStyle = "#1d2421"; x.fillRect(0, 0, W, H);
+        const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, "#26302c"); g.addColorStop(1, "#0d1110");
+        x.fillStyle = g; x.fillRect(0, 0, W, H);
+        const rg = x.createRadialGradient(W * 0.85, H * 0.15, 0, W * 0.85, H * 0.15, Math.max(W, H) * 0.6);
+        rg.addColorStop(0, "rgba(242,183,5,.18)"); rg.addColorStop(1, "rgba(242,183,5,0)"); x.fillStyle = rg; x.fillRect(0, 0, W, H);
         x.textAlign = "left";
-        x.font = `800 ${P ? 26 : 30}px Arial, sans-serif`; const kick = wrap(s.kicker, W - m - 40);
+        x.font = `700 ${P ? 24 : 26}px Arial, sans-serif`; const kick = wrap(s.kicker, W - m - 40);
         x.font = `800 ${P ? 58 : 64}px Arial, sans-serif`; const tl = wrap(s.title, W - m - 40);
         x.font = `500 ${P ? 26 : 28}px Arial, sans-serif`; const ls = (s.lines || []).flatMap(l => wrap(l, W - m - 40));
-        const hgt = kick.length * 40 + tl.length * (P ? 68 : 74) + 16 + ls.length * 40;
+        const hgt = kick.length * 38 + tl.length * (P ? 68 : 74) + 16 + ls.length * 40;
         let y = Math.round((H - hgt) / 2) + 30;
-        x.fillStyle = "#f2b705"; x.fillRect(m - 40, y - 34, 10, hgt + 10);
-        x.font = `800 ${P ? 26 : 30}px Arial, sans-serif`; kick.forEach(l => { x.fillText(l, m, y); y += 40; });
-        y += P ? 34 : 40; x.fillStyle = "#fff"; x.font = `800 ${P ? 58 : 64}px Arial, sans-serif`; tl.forEach(l => { x.fillText(l, m, y, W - m - 40); y += P ? 68 : 74; });
-        y += 6; x.font = `500 ${P ? 26 : 28}px Arial, sans-serif`; x.fillStyle = "#d6dbd8"; ls.forEach(l => { x.fillText(l, m, y, W - m - 40); y += 40; });
-      } else {
-        x.fillStyle = "#000"; x.fillRect(0, 0, W, H);
-        if (s.type === "clip") {
-          const v = s.vid, vw = v.videoWidth, vh = v.videoHeight;
-          if (vw) fitDraw(v, vw, vh, 1);
-        } else {
-          const im = s.img, zoom = 1 + 0.05 * (t / s.sec); // gerak perlahan (Ken Burns)
-          fitDraw(im, im.width, im.height, zoom);
-        }
-        if (s.badge) {
-          x.font = "800 34px Arial, sans-serif"; const bw = x.measureText(s.badge).width + 40;
-          x.fillStyle = s.badgeColor || "#f2b705"; x.fillRect(40, 40, bw, 58);
-          x.fillStyle = "#1d2421"; x.textAlign = "left"; x.fillText(s.badge, 60, 82);
-        }
-        if (s.label) {
-          x.font = "700 24px Arial, sans-serif";
-          const ls = wrap(s.label, W - 112);
-          ls.forEach((l, i) => { const lw = x.measureText(l).width + 32, y = 108 + i * 44;
-            x.fillStyle = "rgba(0,0,0,.6)"; x.fillRect(40, y, lw, 42); x.fillStyle = "#fff"; x.fillText(l, 56, y + 30); });
-        }
+        const a1 = ease(t / 0.7), a2 = ease((t - 0.2) / 0.7), a3 = ease((t - 0.4) / 0.7);
+        x.fillStyle = "#f2b705"; x.fillRect(m - 36, y - 32, 8, (hgt + 10) * a1);
+        x.globalAlpha = a1; x.font = `700 ${P ? 24 : 26}px Arial, sans-serif`; x.fillStyle = "#f2b705";
+        kick.forEach(l => { x.fillText(l.toUpperCase(), m + (1 - a1) * 30, y); y += 38; });
+        y += P ? 36 : 42; x.globalAlpha = a2; x.fillStyle = "#fff"; x.font = `800 ${P ? 58 : 64}px Arial, sans-serif`;
+        tl.forEach(l => { x.fillText(l, m + (1 - a2) * 40, y, W - m - 40); y += P ? 68 : 74; });
+        y += 6; x.globalAlpha = a3; x.font = `500 ${P ? 26 : 28}px Arial, sans-serif`; x.fillStyle = "#c9d0cc";
+        ls.forEach(l => { x.fillText(l, m + (1 - a3) * 40, y, W - m - 40); y += 40; });
+        x.globalAlpha = 1;
+        return;
       }
-      x.globalAlpha = 1;
+      x.fillStyle = "#000"; x.fillRect(0, 0, W, H);
+      if (s.type === "clip") { const v = s.vid; if (v && v.videoWidth) fitDraw(v, v.videoWidth, v.videoHeight, 1); }
+      else if (s.img) { // gerak perlahan bergantian: masuk/keluar & geser kiri/kanan
+        const p = t / s.sec, dir = i % 4;
+        const zoom = dir % 2 ? 1.08 - 0.06 * p : 1.02 + 0.06 * p, pan = (dir < 2 ? -1 : 1) * (p - 0.5) * 0.6;
+        fitDraw(s.img, s.img.width, s.img.height, zoom, pan, 0);
+      }
+      // gradasi bawah agar keterangan terbaca
+      const gb = x.createLinearGradient(0, H * 0.62, 0, H); gb.addColorStop(0, "rgba(0,0,0,0)"); gb.addColorStop(1, "rgba(0,0,0,.65)");
+      x.fillStyle = gb; x.fillRect(0, H * 0.62, W, H * 0.38);
+      let a = ease((t - 0.25) / 0.6);
+      if (s.type === "clip" && s.sec > 6) a *= 1 - ease((t - 4) / 0.6); // video panjang: keterangan hilang setelah 4 detik
+      if (s.badge) {
+        x.globalAlpha = a; x.font = `800 ${P ? 22 : 24}px Arial, sans-serif`; const bw = x.measureText(s.badge).width + 34;
+        x.fillStyle = s.badgeColor || "#f2b705"; rrect(36, 36, bw, 46, 23);
+        x.fillStyle = "#1d2421"; x.textAlign = "left"; x.fillText(s.badge, 53, 67); x.globalAlpha = 1;
+      }
+      if (s.label) { // keterangan bawah (lower third): garis kuning + teks putih
+        const parts = String(s.label).split(" · "), date = /^\d{4}-\d{2}-\d{2}$/.test(parts[parts.length - 1]) ? parts.pop() : "";
+        x.font = `700 ${P ? 30 : 30}px Arial, sans-serif`; const ls = wrap(parts.join(" · "), W - 120);
+        const lh = 38, boxH = ls.length * lh + (date ? 32 : 0);
+        let y = H - (P ? 150 : 60) - boxH;
+        x.globalAlpha = a; x.fillStyle = "#f2b705"; x.fillRect(40, y - 6, 6, boxH + 8);
+        x.fillStyle = "#fff"; x.textAlign = "left"; x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 8;
+        ls.forEach(l => { y += lh - 8; x.fillText(l, 62 + (1 - a) * 24, y); y += 8; });
+        if (date) { x.font = `500 ${P ? 22 : 22}px Arial, sans-serif`; x.fillStyle = "#e8d48a"; x.fillText(date, 62 + (1 - a) * 24, y + 26); }
+        x.shadowBlur = 0; x.globalAlpha = 1;
+      }
     }
 
     if (ac && ac.state === "suspended") { try { await ac.resume(); } catch (e) {} }
-    let cur = -1;
-    r.start(1000);
-    const t0 = performance.now();
-    await new Promise(resolve => {
-      const tick = () => {
-        if (mk.cancel) return resolve();
-        const now = (performance.now() - t0) / 1000;
-        if (now >= total) return resolve();
-        let i = starts.findIndex((st, j) => now >= st && now < st + scenes[j].sec);
-        if (i < 0) i = scenes.length - 1;
-        const s = scenes[i], local = now - starts[i];
-        if (i !== cur) { // pindah adegan: hentikan klip sebelumnya, putar klip ini dari awal
-          const prev = scenes[cur]; if (prev && prev.vid) prev.vid.pause();
-          cur = i;
-          if (s.vid) { try { s.vid.currentTime = s.start || 0; } catch (e) {} s.vid.play().catch(() => { s.vid.muted = true; s.vid.play().catch(() => {}); }); }
-        }
-        paintScene(s, local, 1);
-        if (local < FADE && i > 0) paintScene(scenes[i - 1], scenes[i - 1].sec, 1 - local / FADE);
-        $("mkBar").style.width = (now / total * 100).toFixed(1) + "%";
-        $("mkMsg").textContent = `Membuat video… ${mmss(now)} / ${mmss(total)} (biarkan layar tetap menyala)`;
-        requestAnimationFrame(tick);
-      };
-      tick();
-    });
-    r.stop(); await done;
-    scenes.forEach(s => { if (s.vid) { s.vid.pause(); s.vid.removeAttribute("src"); URL.revokeObjectURL(s.url); } });
+    prep(scenes[0]); if (scenes[1]) prep(scenes[1]);
+    let elapsed = 0, started = false;
+    for (let i = 0; i < scenes.length && !mk.cancel; i++) {
+      const s = scenes[i];
+      // tunggu adegan ini siap; perekaman dijeda selama menunggu agar tidak ada jeda kosong di hasil
+      if (started && r.state === "recording") r.pause();
+      $("mkMsg").textContent = `Menyiapkan adegan ${i + 1}/${scenes.length}…`;
+      await prep(s);
+      if (scenes[i + 1]) prep(scenes[i + 1]);
+      if (!started) { r.start(1000); started = true; } else if (r.state === "paused") r.resume();
+      if (s.vid) { s.vid.play().catch(() => { s.vid.muted = true; s.vid.play().catch(() => {}); }); }
+      const t0 = performance.now();
+      await new Promise(resolve => {
+        const tick = () => {
+          if (mk.cancel) return resolve();
+          const local = (performance.now() - t0) / 1000;
+          if (local >= s.sec) return resolve();
+          paintScene(s, local, i);
+          if (i > 0 && local < FADE) { x.globalAlpha = 1 - ease(local / FADE); x.drawImage(snap, 0, 0); x.globalAlpha = 1; }
+          if (i === scenes.length - 1 && local > s.sec - 0.8) { x.fillStyle = `rgba(0,0,0,${(local - (s.sec - 0.8)) / 0.8})`; x.fillRect(0, 0, W, H); }
+          if (s.gain) s.gain.gain.value = Math.min(1, local / 0.4, (s.sec - local) / 0.5); // suara masuk & keluar halus
+          const now = elapsed + local;
+          $("mkBar").style.width = (now / total * 100).toFixed(1) + "%";
+          $("mkMsg").textContent = `Membuat video… ${mmss(now)} / ${mmss(total)} (biarkan layar tetap menyala)`;
+          requestAnimationFrame(tick);
+        };
+        tick();
+      });
+      sx.drawImage(cv, 0, 0); // bingkai terakhir untuk transisi ke adegan berikutnya
+      elapsed += s.sec;
+      free(s);
+    }
+    if (r.state !== "inactive") { r.stop(); await done; }
+    scenes.forEach(free);
     if (ac) ac.close().catch(() => {});
     keepAwake(false);
     $("mk").hidden = true; document.documentElement.classList.remove("vf-open");

@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.21.2 · 26 Nov 2026";
+const APP_VERSION = "2.22.0 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1367,7 +1367,8 @@ $("vidGal").addEventListener("change", async e => {
 // Video gabungan dari video bebas/galeri: yang dicentang "Masuk video gabungan" (bawaan: semua kecuali hasil gabungan/laporan)
 const isReportVid = v => v.report || /^Video (utuh|laporan|gabungan)/.test(v.title || "");
 const mixOn = v => (v.mix !== undefined ? v.mix : !isReportVid(v));
-const mixKeys = () => [...videos.entries()].filter(([, v]) => !v.room && mixOn(v)).sort((a, b) => a[1].t - b[1].t).map(([k]) => k);
+const mixKeys = () => [...videos.entries()].filter(([, v]) => !v.room && mixOn(v))
+  .sort((a, b) => a[1].t - b[1].t || (a[1].title || "").localeCompare(b[1].title || "", "id", { numeric: true })).map(([k]) => k);
 
 // Video laporan otomatis dari foto
 function reportScenes(scope, sec) {
