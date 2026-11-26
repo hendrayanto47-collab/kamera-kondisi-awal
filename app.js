@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.27.1 · 26 Nov 2026";
+const APP_VERSION = "2.28.0 · 27 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -114,7 +114,7 @@ function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
   dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, gal: v.gal, remote: v.remote, size: v.size, sizeP: v.sizeP, hasPlain: v.hasPlain, skip: v.skip, mix: v.mix, ord: v.ord, fromGal: v.fromGal, report: v.report, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal", "raw", "gidP", "galP"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal", "raw", "gidP", "galP", "ket", "tm", "tOrig"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -572,7 +572,7 @@ function renderHeader() {
 function render() {
   const sc = screen;
   $("scrFoto").hidden = sc !== "foto"; $("scrKeg").hidden = sc !== "kegiatan";
-  $("scrVid").hidden = sc !== "video"; $("scrSet").hidden = sc !== "atur";
+  $("scrVid").hidden = sc !== "video"; $("scrSet").hidden = sc !== "atur"; $("scrUp").hidden = sc !== "unggah";
   $("tabs").hidden = sc !== "foto";
   $("sumCard").hidden = !(sc === "foto" || sc === "kegiatan");
   document.body.dataset.screen = sc;
@@ -580,6 +580,7 @@ function render() {
   $("stgEditBtn").hidden = sc !== "foto" || !view; if (sc !== "foto" || !view) $("stgEditBox").hidden = true;
   if (sc === "kegiatan") { $("eyebrowStage").textContent = "Dokumentasi kegiatan"; renderKeg(); }
   if (sc === "video") renderVid();
+  if (sc === "unggah") renderUp();
   renderTrash(); renderHeader();
   renderCloud(); renderFix(); renderOldStamp(); renderWrongLoc(); renderKoorWarn();
   $("fixBox").hidden = $("fixBox").hidden || sc === "atur";
@@ -1582,6 +1583,107 @@ async function addLogoIntro(k, opt = { logo: true }) {
     "Selesai. Video baru tersimpan di atas daftar; video aslinya tetap ada."), onError: m2 => toast(m2) });
 }
 
+/* ---------- Unggah foto galeri per ruangan (menu "Unggah") ----------
+   Satu ruangan sekaligus: sudut wajib tahap itu (0%: depan, serong kanan, serong kiri, belakang;
+   progres: depan, samping, belakang, dalam). Tanggal & jam stamp: asli dari data foto bila ada,
+   atau diisi sendiri. Waktu yang diisi sendiri ditandai "waktu input manual" di stamp, karena tidak
+   bisa dibuktikan dari foto itu — agar dokumentasi tetap jujur bila diperiksa. */
+const upSel = {}; let upPickAk = null;
+const two2 = n => String(n).padStart(2, "0");
+function upDefaults() {
+  const d = new Date();
+  if (!$("upDate").value) $("upDate").value = `${d.getFullYear()}-${two2(d.getMonth() + 1)}-${two2(d.getDate())}`;
+  if (!$("upTime").value) $("upTime").value = `${two2(d.getHours())}:${two2(d.getMinutes())}`;
+}
+function upTarget() {
+  const st = +$("upSt").value || 0, p = paket.find(x => x.id === $("upRoom").value);
+  return { st, p, angles: p ? reqAngles(p, st) : [] };
+}
+const upManualT = () => { const [y, m, d] = ($("upDate").value || "").split("-").map(Number), [hh, mm] = ($("upTime").value || "").split(":").map(Number);
+  return y && m && d ? new Date(y, m - 1, d, hh || 0, mm || 0).getTime() : null; };
+function upTimeFor(sel) { // { t, manual }
+  if ($("upAsli").checked && sel.exifT) return { t: sel.exifT, manual: false };
+  const t = upManualT(); if (!t) return { t: null, manual: true };
+  return { t, manual: !(sel.exifT && Math.abs(sel.exifT - t) <= 10 * 60000) };
+}
+function renderUp() {
+  upDefaults();
+  const stSel = $("upSt"), prevSt = stSel.value;
+  stSel.innerHTML = STAGES.map(st => `<option value="${st}">${esc(stageName(st))}</option>`).join("");
+  stSel.value = STAGES.map(String).includes(prevSt) ? prevSt : String(view || 0);
+  const rSel = $("upRoom"), prevR = rSel.value;
+  rSel.innerHTML = paket.map(p => `<option value="${esc(p.id)}">${esc(p.nama)}</option>`).join("");
+  if (paket.some(p => p.id === prevR)) rSel.value = prevR;
+  renderUpGrid();
+}
+function renderUpGrid() {
+  const { st, p, angles } = upTarget();
+  for (const ak of Object.keys(upSel)) if (!angles.some(a => a.k === ak)) { URL.revokeObjectURL(upSel[ak].url); delete upSel[ak]; }
+  $("upGrid").innerHTML = !p ? `<p class="hint">Belum ada ruangan. Tambahkan ruangan di menu Foto.</p>` : angles.map(a => {
+    const sel = upSel[a.k], old = photos.get(KEY(p.id, a.k, st));
+    let info = "";
+    if (sel) { const tm = upTimeFor(sel);
+      info = sel.stamped ? `<small class="w">Foto ini sudah ber-stamp — disimpan apa adanya (tanggal & keterangan tidak diubah).</small>`
+        : tm.t ? `<small${tm.manual ? ' class="w"' : ""}>${tgl(tm.t)} ${jam(tm.t)} · ${tm.manual ? "waktu input manual" : "waktu asli foto"}</small>` : `<small class="w">Isi tanggal & jam di atas.</small>`; }
+    else if (old) info = `<small>Sudah ada foto (${tgl(old.t)} ${jam(old.t)}). Pilih foto baru untuk mengganti.</small>`;
+    else info = `<small>${esc(a.d || "")}</small>`;
+    const img = sel ? `<img src="${sel.url}" alt=""><span class="tagx">Baru</span>` : old ? `<img src="${old.url}" alt=""><span class="tagx">Tersimpan</span>` : "Belum ada foto";
+    return `<div class="upslot"><b>${esc(a.l)}</b><div class="pv">${img}</div>${info}
+      <div class="acts"><button class="btn" type="button" data-uppick="${a.k}">${sel ? "Ganti" : "Pilih foto"}</button>${sel ? `<button class="btn ghost" type="button" data-updrop="${a.k}">Batal</button>` : ""}</div></div>`;
+  }).join("");
+  const n = Object.keys(upSel).length;
+  $("upSave").disabled = !n; $("upSave").textContent = n ? `Simpan ${n} foto ke ${p ? p.nama : "ruangan"}` : "Pilih foto dulu";
+  const anyManual = Object.values(upSel).some(x => !x.stamped && upTimeFor(x).manual);
+  $("upTmHint").textContent = anyManual
+    ? "Foto tanpa tanggal asli (mis. dari WhatsApp) atau yang jamnya diubah akan bertanda \"waktu input manual\" di stamp."
+    : "Tanggal & jam di atas dipakai untuk foto yang tidak punya tanggal asli.";
+}
+["upSt", "upRoom"].forEach(id => $(id).addEventListener("change", renderUpGrid));
+["upDate", "upTime", "upAsli"].forEach(id => $(id).addEventListener("input", renderUpGrid));
+$("upAsli").addEventListener("change", renderUpGrid);
+$("upGrid").addEventListener("click", e => {
+  const pk = e.target.closest("[data-uppick]"), dr = e.target.closest("[data-updrop]");
+  if (pk) { upPickAk = pk.dataset.uppick; $("upFile").value = ""; $("upFile").click(); }
+  if (dr) { URL.revokeObjectURL(upSel[dr.dataset.updrop].url); delete upSel[dr.dataset.updrop]; renderUpGrid(); }
+});
+$("upFile").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0]; if (!f || !upPickAk) return;
+  try {
+    const file = new File([await f.arrayBuffer()], f.name, { type: f.type || "image/jpeg", lastModified: f.lastModified }); // salin: file galeri hanya "dipinjam"
+    const img = await loadImage(file), ex = await readExif(file);
+    const stamped = await hasOwnStamp(file) || !!(ex && ex.tags && STAMP_APPS.test(ex.tags)) || looksStamped(img);
+    if (upSel[upPickAk]) URL.revokeObjectURL(upSel[upPickAk].url);
+    upSel[upPickAk] = { file, ex, exifT: ex && ex.t ? ex.t : null, stamped, url: URL.createObjectURL(file) };
+    renderUpGrid();
+  } catch (er) { toast("Foto tidak bisa dibaca. Pilih JPG/PNG."); }
+});
+$("upSave").addEventListener("click", async () => {
+  const { st, p } = upTarget(); if (!p) return;
+  const ket = $("upKet").value.trim(), entries = Object.entries(upSel);
+  if (entries.some(([, s2]) => !s2.stamped && !upTimeFor(s2).t)) return toast("Isi tanggal & jam dulu.");
+  $("upSave").disabled = true; let ok = 0;
+  for (const [ak, sel] of entries) {
+    const key = KEY(p.id, ak, st), a = angleOf(ak, st);
+    toast(`Menyimpan ${a.l} (${ok + 1}/${entries.length})…`);
+    try {
+      const img = await loadImage(sel.file), info = KKA.analyze(img), gps = galGps(sel.ex, false);
+      const tm = upTimeFor(sel);
+      let res;
+      if (sel.stamped) res = await rawRec(sel.file, sel.exifT || takenTime(sel.file), gps, img);
+      else res = await stamp(img, tm.t, gps, ket ? { ...p, nama: `${p.nama} — ${ket}` } : p, a, { tag: stageTag(st) + (tm.manual ? " · WAKTU INPUT MANUAL" : "") });
+      const old = photos.get(key); if (old) URL.revokeObjectURL(old.url);
+      const prevPath = old ? (old.synced ? old.path : old.prevPath) || null : null;
+      photos.set(key, { ...res, hash: info.hash, warn: [], ket: !sel.stamped && ket ? ket : undefined, tm: !sel.stamped && tm.manual ? true : undefined,
+        tOrig: sel.exifT || undefined, up: undefined, synced: false, gs: false, gid: old ? old.gid : undefined, gidP: old ? old.gidP : undefined,
+        path: null, prevPath, url: URL.createObjectURL(res.blob) });
+      persist(key); ok++;
+      URL.revokeObjectURL(sel.url); delete upSel[ak];
+    } catch (er) { toast(`${a.l} gagal disimpan.`); }
+  }
+  render(); cloudSoon(1500);
+  toast(`${ok} foto tersimpan di ${p.nama} · ${stageName(st)}. Lihat di menu Foto.`);
+});
+
 /* ---------- Musik latar video ---------- */
 let musicFile = null; // lagu dari HP: hanya untuk sesi ini (tidak disimpan)
 const MUSIC_GEN = ["semangat", "tenang", "megah"];
@@ -1849,7 +1951,8 @@ function stampCtx(k, cap, away) {
   const q = parseKey(k);
   if (away === undefined) away = !!(photos.get(k) || {}).away;
   if (q.keg) return { p: { nama: cap || "Kegiatan" }, a: { l: "Kegiatan", k: "keg" }, opts: { title: `KEGIATAN — ${(cap || "").toUpperCase()}`, tag: "DOKUMENTASI KEGIATAN", away } };
-  return { p: paket.find(x => x.id === q.pid), a: angleOf(q.ak, q.st), opts: { tag: stageTag(q.st) } };
+  const ph = photos.get(k) || {}, p0 = paket.find(x => x.id === q.pid);
+  return { p: ph.ket && p0 ? { ...p0, nama: `${p0.nama} — ${ph.ket}` } : p0, a: angleOf(q.ak, q.st), opts: { tag: stageTag(q.st) + (ph.tm ? " · WAKTU INPUT MANUAL" : "") } };
 }
 
 /* Cap LENGKAP: peta mini + alamat + Lat/Long + Plus Code + waktu + identitas sekolah.

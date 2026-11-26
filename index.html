@@ -154,6 +154,28 @@
     <div class="vidlist" id="vidList"></div>
   </section>
 
+  <!-- ===== Layar: Unggah foto galeri per ruangan ===== -->
+  <section class="screen" id="scrUp" hidden>
+    <section class="card-s" aria-labelledby="hUp">
+      <h2 id="hUp">Unggah foto dari galeri</h2>
+      <p class="hint">Satu ruangan sekaligus: <b>Tampak Depan, Samping, Belakang, Dalam</b>. Atur tahap, ruangan, keterangan, tanggal & jam stamp, pilih fotonya, lalu simpan.</p>
+      <div class="row2">
+        <label class="f">Tahap<select id="upSt"></select></label>
+        <label class="f">Ruangan<select id="upRoom"></select></label>
+      </div>
+      <label class="f">Keterangan kegiatan (tercetak di stamp)<input type="text" id="upKet" placeholder="mis. Pemasangan rangka atap" autocomplete="off"></label>
+      <div class="row2">
+        <label class="f">Tanggal<input type="date" id="upDate"></label>
+        <label class="f">Jam<input type="time" id="upTime"></label>
+      </div>
+      <label class="chk"><input type="checkbox" id="upAsli" checked> Pakai tanggal & jam asli foto bila ada</label>
+      <p class="hint" id="upTmHint"></p>
+    </section>
+    <div class="upgrid" id="upGrid"></div>
+    <button class="btn big primary" id="upSave" type="button" disabled>Simpan ke ruangan ini</button>
+    <input type="file" id="upFile" accept="image/*" hidden>
+  </section>
+
   <!-- ===== Layar: Pengaturan ===== -->
   <section class="screen" id="scrSet" hidden>
     <section class="card-s" aria-labelledby="hProfil">
@@ -258,6 +280,7 @@
 <nav class="bottomnav" id="bottomNav" aria-label="Menu utama">
   <button type="button" data-screen="foto"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="4"/></svg><span>Foto</span></button>
   <button type="button" data-screen="kegiatan"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M8 14h4"/></svg><span>Kegiatan</span><em id="bnKeg" hidden></em></button>
+  <button type="button" data-screen="unggah"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6M12 3v8M9 6l3-3 3 3"/></svg><span>Unggah</span></button>
   <button type="button" data-screen="video"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/></svg><span>Video</span><em id="bnVid" hidden></em></button>
   <button type="button" data-screen="atur"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span>Pengaturan</span></button>
 </nav>
