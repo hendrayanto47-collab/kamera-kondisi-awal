@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.27.0 · 26 Nov 2026";
+const APP_VERSION = "2.27.1 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1316,10 +1316,12 @@ $("vidList").addEventListener("click", e => {
       <label class="f">Suara asli video<select class="dOrig"><option value="keep">Tetap terdengar (musik pelan di belakang)</option><option value="mix">Sama keras dengan musik</option><option value="mute">Dimatikan (musik saja)</option></select></label>
       <button class="btn primary" type="button" data-vdeco="${esc(k)}">🎬 Buat video baru</button>
       <small>Video asli tetap disimpan. Lama proses = panjang video${profil.logo ? " + 9 detik logo" : ""}; layar harus tetap menyala.</small>`;
+    box.querySelector(".dMusic").value = "semangat"; // bawaan: ada musik
     try { const mv = localStorage.getItem("kka-music"); if (mv && MUSIC_GEN.includes(mv)) box.querySelector(".dMusic").value = mv; } catch (er) {}
     item.querySelector(".acts").after(box); return;
   }
   if (dg) {
+    KKAVid.unlockAudio();
     const box = dg.closest(".vdeco"), music = box.querySelector(".dMusic").value, orig = box.querySelector(".dOrig").value;
     const opt = { logo: box.querySelector(".dLogo").checked, music: MUSIC_GEN.includes(music) ? { kind: "gen", style: music } : music === "file" && musicFile ? { kind: "file", blob: musicFile.blob } : null, orig };
     if (!opt.logo && !opt.music) return toast("Pilih pembuka logo atau musik dulu.");
@@ -1572,7 +1574,7 @@ async function addLogoIntro(k, opt = { logo: true }) {
   const portrait = !!(m && m.h > m.w), school = profil.nama || "Sekolah";
   const sc = [...(opt.logo ? [{ type: "logo", src: profil.logo, title: school, sub: `NPSN ${profil.npsn || "-"}${profil.wil ? "  ·  " + profil.wil : ""}`, sec: 9 }] : []),
     { type: "clip", blob: v.blob, sec: dur, start: 0, mute: opt.orig === "mute" }];
-  const music = opt.music ? { ...opt.music, duck: opt.orig === "mix" ? 0.75 : 0.3 } : null;
+  const music = opt.music ? { ...opt.music, vol: 0.9, duck: opt.orig === "mix" ? 0.9 : 0.5 } : null;
   const tag = opt.logo && music ? "dengan logo & musik" : opt.logo ? "dengan logo" : "dengan musik";
   const total = dur + (opt.logo ? 9 : 0);
   toast(`Membuat video baru (${tag}, ±${fmtDur(total)}). Biarkan layar menyala.`);
@@ -1635,6 +1637,7 @@ $("mkKegVid").addEventListener("change", updateEstimate);
 $("mkKeg").addEventListener("change", updateEstimate);
 $("mkLogo").addEventListener("change", updateEstimate);
 $("mkBtn").addEventListener("click", async () => {
+  KKAVid.unlockAudio();
   const scope0 = $("mkScope").value;
   if (scope0.startsWith("rv")) { // klip dari HP lain diambil dulu dari Drive
     const sts = scope0 === "rv:all" ? STAGES : [+scope0.split(":")[1]];

@@ -352,6 +352,17 @@
     return true;
   }
 
+  /* Suara (musik, efek logo, suara klip) butuh AudioContext yang "dibuka" langsung saat tombol diketuk:
+     HP (terutama iPhone, juga sebagian Android) menolak menyalakan suara bila dibuat setelah menunggu proses lain. */
+  let warmAc = null;
+  function unlockAudio() {
+    try {
+      if (!warmAc || warmAc.state === "closed") warmAc = new (window.AudioContext || window.webkitAudioContext)();
+      if (warmAc.state === "suspended") warmAc.resume().catch(() => {});
+      const b = warmAc.createBuffer(1, 1, 22050), src = warmAc.createBufferSource(); src.buffer = b; src.connect(warmAc.destination); src.start(0);
+    } catch (e) {}
+  }
+  function takeAudio() { const a = warmAc && warmAc.state !== "closed" ? warmAc : new (window.AudioContext || window.webkitAudioContext)(); warmAc = null; return a; }
   async function makeReport(scenes, o) {
     // mendatar 16:9 (YouTube/Facebook) atau tegak 9:16 (TikTok, Reels, Status WA)
     if (o.portrait) { W = 720; H = 1280; } else { W = 1280; H = 720; }
@@ -366,7 +377,7 @@
     // Suara klip ikut direkam lewat Web Audio (tidak terdengar di speaker); tiap klip punya pengatur volume untuk fade
     let ac = null, dest = null;
     if (o.music || scenes.some(s => s.type === "clip" || s.type === "logo")) {
-      try { ac = new (window.AudioContext || window.webkitAudioContext)(); dest = ac.createMediaStreamDestination(); } catch (e) { ac = null; }
+      try { ac = takeAudio(); dest = ac.createMediaStreamDestination(); } catch (e) { ac = null; }
     }
     /* Foto & video disiapkan satu per satu (adegan ini + berikutnya saja), bukan semuanya di awal:
        HP tidak sanggup membuka puluhan video/foto besar sekaligus (hasilnya layar hitam atau macet). */
@@ -681,7 +692,7 @@
           const now = elapsed + local;
           if (mus && mus.t0 !== null) {
             if (mus.gen) mus.gen.tick(mus.t0);
-            const base = (o.music.vol || 0.8) * (s.type === "clip" && !s.mute ? (o.music.duck || 0.3) : 1), left = total - now;
+            const base = (o.music.vol || 0.8) * (s.type === "clip" && !s.mute ? (o.music.duck || 0.45) : 1), left = total - now;
             musLevel(base * Math.min(1, left / 2.5));
           }
           $("mkBar").style.width = (now / total * 100).toFixed(1) + "%";
@@ -709,5 +720,5 @@
   }
   $("mkCancel").addEventListener("click", () => { if (mk) mk.cancel = true; });
 
-  window.KKAVid = { _level: () => rec && rec.level, supported, openRecorder, makeReport, pickMime, previewMusic };
+  window.KKAVid = { _level: () => rec && rec.level, supported, openRecorder, makeReport, pickMime, previewMusic, unlockAudio };
 })();
