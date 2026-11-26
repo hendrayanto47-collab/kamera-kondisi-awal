@@ -268,6 +268,90 @@
   /* scenes: [{type:"title", title, sub, lines}] | [{type:"photo", blob, label, badge, sec}]
      Dirender waktu-nyata ke kanvas lalu direkam (durasi render = durasi video). */
   let mk = null;
+  /* ---------- Musik latar bawaan (dibuat langsung oleh aplikasi, bebas hak cipta) ----------
+     Tiga gaya: semangat (ceria, ada ketukan), tenang (lembut), megah (sinematik).
+     Dijadwalkan sedikit demi sedikit mengikuti jam AudioContext: bila AudioContext dijeda, musik ikut berhenti. */
+  const MUSIC = {
+    semangat: { bpm: 112, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], pad: "triangle", drums: "pop", arp: [0, 1, 2, 1, 0, 2, 1, 2], bass: "drive" },
+    tenang: { bpm: 74, root: 60, gain: 1.7, prog: [[0, 4, 7, 11], [9, 12, 16, 19], [5, 9, 12, 16], [7, 11, 14, 17]], pad: "sine", drums: "soft", arp: [0, 2, 1, 3, 2, 1, 3, 2], bass: "half" },
+    megah: { bpm: 84, root: 57, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]], pad: "sawtooth", drums: "epic", arp: [0, 0, 1, 0, 2, 0, 1, 0], bass: "long" },
+  };
+  const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+  function makeMusicGen(ac, out, style) {
+    const S = MUSIC[style] || MUSIC.semangat, beat = 60 / S.bpm;
+    { const mst = ac.createGain(); mst.gain.value = S.gain || 1; mst.connect(out); out = mst; }
+    const nb = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), nd = nb.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    // gema sederhana untuk pad & arpeggio
+    const ir = ac.createBuffer(2, ac.sampleRate * 2.2, ac.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3); }
+    const rev = ac.createConvolver(); rev.buffer = ir; const revG = ac.createGain(); revG.gain.value = 0.35; rev.connect(revG).connect(out);
+    const dry = ac.createGain(); dry.gain.value = 1; dry.connect(out);
+    const send = (node, wet) => { node.connect(dry); if (wet) { const g = ac.createGain(); g.gain.value = wet; node.connect(g).connect(rev); } };
+    const note = (type, m, t, dur, peak, att = 0.01, wet = 0, cut = 0) => {
+      const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = mf(m);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + att); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      let n = o.connect(g); if (cut) { const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = cut; n = g.connect(f); }
+      send(n, wet); o.start(t); o.stop(t + dur + 0.05);
+    };
+    const hit = (t, dur, peak, type, freq) => { const n = ac.createBufferSource(); n.buffer = nb; const f = ac.createBiquadFilter(), g = ac.createGain();
+      f.type = type; f.frequency.value = freq; g.gain.setValueAtTime(peak, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      n.connect(f).connect(g); send(g, 0.1); n.start(t, Math.random() * 0.5); n.stop(t + dur + 0.02); };
+    const kick = (t, peak = 0.9, low = 45) => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(low, t + 0.18);
+      g.gain.setValueAtTime(peak, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4); o.connect(g); send(g, 0); o.start(t); o.stop(t + 0.45); };
+    let nextBeat = 0;
+    function schedBeat(b, t0) {
+      const t = t0 + b * beat, bar = Math.floor(b / 4), bi = b % 4, ch = S.prog[bar % S.prog.length], R = S.root;
+      const intro = bar < 2, fill = bar % 8 === 7;
+      if (bi === 0) { // pad akor tiap birama
+        ch.forEach(iv => note(S.pad, R + iv, t, beat * 4.2, S.pad === "sawtooth" ? 0.035 : 0.05, beat * 0.8, 0.6, S.pad === "sawtooth" ? 1400 : 0));
+        if (S.pad === "sawtooth") ch.forEach(iv => note("triangle", R + iv + 12, t, beat * 4, 0.02, beat * 1.2, 0.8));
+      }
+      // bas
+      const bassM = R - 24 + ch[0];
+      if (S.bass === "drive") { note("triangle", bassM, t, beat * 0.45, 0.22); note("triangle", bassM, t + beat / 2, beat * 0.4, 0.16); }
+      else if (S.bass === "half" && (bi === 0 || bi === 2)) note("sine", bassM, t, beat * 1.9, 0.22, 0.04);
+      else if (S.bass === "long" && bi === 0) { note("sawtooth", bassM, t, beat * 3.9, 0.07, 0.1, 0, 400); note("sine", bassM - 12, t, beat * 3.9, 0.2, 0.1); }
+      // arpeggio (petikan) dua per ketukan
+      if (!(intro && S.drums === "epic")) for (let h = 0; h < 2; h++) {
+        const idx = S.arp[(bi * 2 + h) % S.arp.length], m = R + 12 + ch[idx % ch.length] + (idx >= ch.length ? 12 : 0);
+        note(S.drums === "epic" ? "sawtooth" : "triangle", m, t + h * beat / 2, beat * (S.drums === "soft" ? 0.9 : 0.45), S.drums === "soft" ? 0.045 : 0.035, 0.005, 0.5, S.drums === "epic" ? 1800 : 0);
+      }
+      // perkusi
+      if (S.drums === "pop" && !intro) {
+        if (bi === 0 || bi === 2) kick(t); if (bi === 2 && bar % 2) kick(t + beat / 2, 0.6);
+        if (bi === 1 || bi === 3) hit(t, 0.18, 0.35, "highpass", 1800);
+        hit(t + beat / 2, 0.05, 0.12, "highpass", 7000); hit(t, 0.03, 0.06, "highpass", 8000);
+        if (fill && bi === 3) for (let i = 1; i < 4; i++) hit(t + i * beat / 4, 0.1, 0.25, "bandpass", 900 + i * 300);
+      } else if (S.drums === "soft" && !intro) {
+        hit(t, 0.06, 0.05, "highpass", 6000); hit(t + beat / 2, 0.05, 0.035, "highpass", 6000);
+        if (bi === 0) kick(t, 0.35, 50);
+      } else if (S.drums === "epic") {
+        if (bi === 0) kick(t, 1, 38); if (bi === 2 && !intro) kick(t + beat / 2, 0.7, 40);
+        if (bi === 2 && !intro) hit(t, 0.35, 0.3, "bandpass", 300);
+        if (bi === 0 && bar % 4 === 0 && !intro) hit(t, 1.6, 0.12, "highpass", 4000);
+        if (fill && !intro) hit(t + beat / 2, 0.2, 0.25, "bandpass", 180 + bi * 40);
+      }
+    }
+    return { // panggil berkala; t0 = waktu AudioContext saat musik dimulai
+      tick(t0) { while (t0 + nextBeat * beat < ac.currentTime + 0.6) schedBeat(nextBeat++, t0); },
+    };
+  }
+  // Contoh musik untuk didengar sebelum dipilih (±10 detik di speaker)
+  let preview = null;
+  function previewMusic(style) {
+    if (preview) { preview.stop(); preview = null; return false; }
+    let ac; try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return false; }
+    const g = ac.createGain(); g.gain.value = 0.6; g.connect(ac.destination);
+    const gen = makeMusicGen(ac, g, style), t0 = ac.currentTime + 0.1;
+    const iv = setInterval(() => gen.tick(t0), 150); gen.tick(t0);
+    g.gain.setValueAtTime(0.6, t0 + 9); g.gain.linearRampToValueAtTime(0, t0 + 10.5);
+    const stop = () => { clearInterval(iv); ac.close().catch(() => {}); preview = null; };
+    const to = setTimeout(stop, 11000);
+    preview = { stop: () => { clearTimeout(to); stop(); } };
+    return true;
+  }
+
   async function makeReport(scenes, o) {
     // mendatar 16:9 (YouTube/Facebook) atau tegak 9:16 (TikTok, Reels, Status WA)
     if (o.portrait) { W = 720; H = 1280; } else { W = 1280; H = 720; }
@@ -281,7 +365,7 @@
     $("mkMsg").textContent = "Menyiapkan foto & video…";
     // Suara klip ikut direkam lewat Web Audio (tidak terdengar di speaker); tiap klip punya pengatur volume untuk fade
     let ac = null, dest = null;
-    if (scenes.some(s => s.type === "clip" || s.type === "logo")) {
+    if (o.music || scenes.some(s => s.type === "clip" || s.type === "logo")) {
       try { ac = new (window.AudioContext || window.webkitAudioContext)(); dest = ac.createMediaStreamDestination(); } catch (e) { ac = null; }
     }
     /* Foto & video disiapkan satu per satu (adegan ini + berikutnya saja), bukan semuanya di awal:
@@ -552,16 +636,36 @@
     }
 
     if (ac && ac.state === "suspended") { try { await ac.resume(); } catch (e) {} }
+    /* Musik latar: bawaan (dibuat aplikasi) atau lagu pilihan dari HP. Mulai setelah pembuka logo,
+       mengecil saat video berisi suara asli diputar, memudar di akhir. */
+    let mus = null;
+    if (o.music && ac && dest) {
+      const bus = ac.createGain(); bus.gain.value = 0.0001;
+      const comp = ac.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 4;
+      bus.connect(comp).connect(dest);
+      mus = { bus, t0: null, level: -1 };
+      if (o.music.kind === "file") {
+        const el = new Audio(); el.loop = true; el.preload = "auto"; el.src = mus.url = URL.createObjectURL(o.music.blob);
+        await new Promise(res => { el.oncanplay = res; el.onerror = res; setTimeout(res, 8000); });
+        try { ac.createMediaElementSource(el).connect(bus); mus.el = el; } catch (e) { mus = null; }
+      } else mus.gen = makeMusicGen(ac, bus, o.music.style);
+    }
+    const musLevel = (want) => { if (!mus || Math.abs(want - mus.level) < 0.02) return; mus.level = want; mus.bus.gain.setTargetAtTime(Math.max(0.0001, want), ac.currentTime, 0.25); };
     prep(scenes[0]); if (scenes[1]) prep(scenes[1]);
     let elapsed = 0, started = false;
     for (let i = 0; i < scenes.length && !mk.cancel; i++) {
       const s = scenes[i];
       // tunggu adegan ini siap; perekaman dijeda selama menunggu agar tidak ada jeda kosong di hasil
-      if (started && r.state === "recording") r.pause();
+      if (started && r.state === "recording") { r.pause(); if (mus) { if (mus.el) mus.el.pause(); try { await ac.suspend(); } catch (e) {} } }
       $("mkMsg").textContent = `Menyiapkan adegan ${i + 1}/${scenes.length}…`;
       await prep(s);
       if (scenes[i + 1]) prep(scenes[i + 1]);
+      if (ac && ac.state === "suspended") { try { await ac.resume(); } catch (e) {} }
       if (!started) { r.start(1000); started = true; } else if (r.state === "paused") r.resume();
+      if (mus && s.type !== "logo") {
+        if (mus.t0 === null) { mus.t0 = ac.currentTime + 0.05; if (mus.el) { mus.el.currentTime = 0; } }
+        if (mus.el) mus.el.play().catch(() => {});
+      }
       if (s.vid) { s.vid.play().catch(() => { s.vid.muted = true; s.vid.play().catch(() => {}); }); }
       if (s.type === "logo") logoSfx(s);
       const t0 = performance.now();
@@ -575,6 +679,11 @@
           if (i === scenes.length - 1 && local > s.sec - 0.8) { x.fillStyle = `rgba(0,0,0,${(local - (s.sec - 0.8)) / 0.8})`; x.fillRect(0, 0, W, H); }
           if (s.gain) s.gain.gain.value = Math.min(1, local / 0.4, (s.sec - local) / 0.5); // suara masuk & keluar halus
           const now = elapsed + local;
+          if (mus && mus.t0 !== null) {
+            if (mus.gen) mus.gen.tick(mus.t0);
+            const base = (o.music.vol || 0.8) * (s.type === "clip" ? 0.3 : 1), left = total - now;
+            musLevel(base * Math.min(1, left / 2.5));
+          }
           $("mkBar").style.width = (now / total * 100).toFixed(1) + "%";
           $("mkMsg").textContent = `Membuat video… ${mmss(now)} / ${mmss(total)} (biarkan layar tetap menyala)`;
           requestAnimationFrame(tick);
@@ -587,6 +696,7 @@
     }
     if (r.state !== "inactive") { r.stop(); await done; }
     scenes.forEach(free);
+    if (mus && mus.el) { mus.el.pause(); URL.revokeObjectURL(mus.url); }
     if (ac) ac.close().catch(() => {});
     keepAwake(false);
     $("mk").hidden = true; document.documentElement.classList.remove("vf-open");
@@ -599,5 +709,5 @@
   }
   $("mkCancel").addEventListener("click", () => { if (mk) mk.cancel = true; });
 
-  window.KKAVid = { _level: () => rec && rec.level, supported, openRecorder, makeReport, pickMime };
+  window.KKAVid = { _level: () => rec && rec.level, supported, openRecorder, makeReport, pickMime, previewMusic };
 })();

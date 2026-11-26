@@ -432,3 +432,6 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .logorow small{color:var(--muted);font-size:12px}
 .logorow .acts{display:flex;gap:8px;flex-wrap:wrap}
 .logoprev{width:64px;height:64px;object-fit:contain;flex:0 0 64px;border-radius:8px;background:repeating-conic-gradient(#0000 0 25%,#8882 0 50%) 0 0/12px 12px}
+
+.musicrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:2px 0 6px}
+.musicrow small{color:var(--muted);font-size:12px;flex:1 1 200px;min-width:0}

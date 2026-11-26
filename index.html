@@ -124,11 +124,14 @@
       <div class="row2">
         <label class="f">Isi video<select id="mkScope"></select></label>
         <label class="f mk-sec" id="mkFmtWrap">Format<select id="mkFmt"><option value="land">Mendatar 16:9 (YouTube, Facebook)</option><option value="port">Tegak 9:16 (TikTok, Reels, Status WA)</option></select></label>
+        <label class="f mk-sec" id="mkMusicWrap">Musik latar<select id="mkMusic"><option value="semangat">🎵 Semangat (ceria, ada ketukan)</option><option value="tenang">🎵 Tenang (lembut)</option><option value="megah">🎵 Megah (sinematik)</option><option value="file">📁 Lagu dari HP…</option><option value="none">Tanpa musik</option></select></label>
         <label class="f mk-sec" id="mkTitleWrap" hidden>Judul video gabungan<input type="text" id="mkTitle" placeholder="mis. Progres pekerjaan minggu ke-2" autocomplete="off"></label>
         <label class="f mk-sec" id="mkVerWrap" hidden>Versi video<select id="mkVer"><option value="polos">Polos</option><option value="stamp">Dengan stamp</option></select></label>
         <label class="f mk-sec" id="mkClipWrap" hidden>Detik/video<select id="mkClip"><option value="4">4</option><option value="6" selected>6</option><option value="full">Penuh</option></select></label>
         <label class="f mk-sec" id="mkSecWrap">Detik/foto<select id="mkSec"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></label>
       </div>
+      <div class="musicrow"><button class="btn ghost" type="button" id="mkMusicPlay">▶ Dengarkan contoh musik</button><small id="mkMusicHint"></small></div>
+      <input type="file" id="mkMusicFile" accept="audio/*" hidden>
       <div class="logorow mklogo"><img class="logoprev" alt="Logo sekolah" hidden><div>
         <label class="chk" style="margin:0"><input type="checkbox" id="mkLogo" checked> <b>Pembuka: animasi logo sekolah + efek suara</b></label>
         <small id="mkLogoHint"></small>

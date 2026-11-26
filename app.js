@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.25.0 · 26 Nov 2026";
+const APP_VERSION = "2.26.0 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1560,6 +1560,42 @@ async function addLogoIntro(k) {
     "Selesai. Video dengan pembuka logo tersimpan di atas daftar; video aslinya tetap ada."), onError: m2 => toast(m2) });
 }
 
+/* ---------- Musik latar video ---------- */
+let musicFile = null; // lagu dari HP: hanya untuk sesi ini (tidak disimpan)
+const MUSIC_GEN = ["semangat", "tenang", "megah"];
+try { const mv = localStorage.getItem("kka-music"); if (mv && mv !== "file") $("mkMusic").value = mv; } catch (e) {}
+function musicHint() {
+  const v = $("mkMusic").value;
+  $("mkMusicPlay").hidden = !MUSIC_GEN.includes(v);
+  $("mkMusicHint").textContent = v === "file" ? (musicFile ? `Lagu: ${musicFile.name}. Lagu orang lain bisa dibisukan/diblokir TikTok, YouTube, Facebook karena hak cipta.` : "Belum ada lagu dipilih.")
+    : v === "none" ? "Video tanpa musik (suara asli video tetap ada)."
+    : "Musik dibuat langsung oleh aplikasi: bebas hak cipta, aman untuk semua media sosial. Saat video bersuara diputar, musik otomatis mengecil.";
+}
+$("mkMusic").addEventListener("change", () => {
+  const v = $("mkMusic").value;
+  if (v === "file" && !musicFile) { $("mkMusicFile").value = ""; $("mkMusicFile").click(); }
+  try { localStorage.setItem("kka-music", v); } catch (e) {}
+  musicHint();
+});
+$("mkMusicFile").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) { if (!musicFile) $("mkMusic").value = "semangat"; return musicHint(); }
+  try { musicFile = { name: f.name, blob: new Blob([await f.arrayBuffer()], { type: f.type || "audio/mpeg" }) }; } catch (er) { toast("Lagu tidak bisa dibaca."); }
+  musicHint();
+});
+$("mkMusicPlay").addEventListener("click", () => {
+  const on = KKAVid.previewMusic($("mkMusic").value);
+  $("mkMusicPlay").textContent = on ? "■ Hentikan contoh" : "▶ Dengarkan contoh musik";
+  if (on) setTimeout(() => { $("mkMusicPlay").textContent = "▶ Dengarkan contoh musik"; }, 11000);
+});
+function musicOpt() {
+  const v = $("mkMusic").value;
+  if (MUSIC_GEN.includes(v)) return { kind: "gen", style: v };
+  if (v === "file" && musicFile) return { kind: "file", blob: musicFile.blob };
+  return null;
+}
+musicHint();
+
 // Langsung ke pembuat video dengan isi "Gabungan video pilihan"
 function vidToMix() {
   if (!mixKeys().length) return toast("Belum ada video yang dicentang \"Masuk video gabungan\". Unggah video dari galeri atau rekam dulu.");
@@ -1591,7 +1627,7 @@ $("mkBtn").addEventListener("click", async () => {
     : scope === "vb" ? `Video gabungan – ${$("mkTitle").value.trim() || "video pilihan"}`
     : scope === "cmp" ? "Video laporan – perbandingan 0% → 100%" : scope === "keg" ? `Video gabungan – kegiatan${$("mkTitle").value.trim() ? " – " + $("mkTitle").value.trim() : ""}` : `Video laporan – ${stageName(+scope).toLowerCase()}`;
   const portrait = $("mkFmt").value === "port";
-  KKAVid.makeReport(sc, { portrait, onSaved: v => saveVideo({ ...v, title: label + (portrait ? " (tegak 9:16)" : ""), report: true }), onError: m => toast(m) });
+  KKAVid.makeReport(sc, { portrait, music: musicOpt(), onSaved: v => saveVideo({ ...v, title: label + (portrait ? " (tegak 9:16)" : ""), report: true }), onError: m => toast(m) });
 });
 
 // ---------- Cap foto ----------
