@@ -435,3 +435,6 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 
 .musicrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:2px 0 6px}
 .musicrow small{color:var(--muted);font-size:12px;flex:1 1 200px;min-width:0}
+
+.vdeco{display:grid;gap:8px;margin:8px 0 2px;padding:10px;border:1px dashed var(--accent);border-radius:10px}
+.vdeco small{color:var(--muted);font-size:12px}

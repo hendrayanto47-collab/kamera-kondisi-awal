@@ -377,7 +377,7 @@
         v.playsInline = true; v.preload = "auto"; v.src = s.url = URL.createObjectURL(s.blob);
         await new Promise(res => { v.oncanplay = res; v.onerror = res; setTimeout(res, 15000); });
         if (s.start) { try { v.currentTime = s.start; await new Promise(r => { v.onseeked = r; setTimeout(r, 3000); }); } catch (e) {} }
-        if (ac) { try { const g = ac.createGain(); g.gain.value = 0; ac.createMediaElementSource(v).connect(g).connect(dest); s.gain = g; } catch (e) { v.muted = true; } } else v.muted = true;
+        if (ac && !s.mute) { try { const g = ac.createGain(); g.gain.value = 0; ac.createMediaElementSource(v).connect(g).connect(dest); s.gain = g; } catch (e) { v.muted = true; } } else v.muted = true;
         s.vid = v;
       })();
       else if (s.type === "logo") s.ready = prepLogo(s);
@@ -681,7 +681,7 @@
           const now = elapsed + local;
           if (mus && mus.t0 !== null) {
             if (mus.gen) mus.gen.tick(mus.t0);
-            const base = (o.music.vol || 0.8) * (s.type === "clip" ? 0.3 : 1), left = total - now;
+            const base = (o.music.vol || 0.8) * (s.type === "clip" && !s.mute ? (o.music.duck || 0.3) : 1), left = total - now;
             musLevel(base * Math.min(1, left / 2.5));
           }
           $("mkBar").style.width = (now / total * 100).toFixed(1) + "%";

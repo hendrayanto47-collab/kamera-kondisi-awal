@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.26.0 · 26 Nov 2026";
+const APP_VERSION = "2.27.0 · 26 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1260,7 +1260,7 @@ function renderVid() {
       <div class="acts">${v.plain || v.hasPlain ? `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah (stamp)</button><button class="btn primary" type="button" data-vshare="${esc(k)}" data-ver="polos">Unggah (polos)</button>`
         : `<button class="btn primary" type="button" data-vshare="${esc(k)}">Unggah ke Drive</button>`}
       <button class="btn" type="button" data-vdl="${esc(k)}">Simpan ke galeri</button>
-      <button class="btn" type="button" data-vlogo="${esc(k)}">✨ Tambah pembuka logo</button>
+      <button class="btn" type="button" data-vlogo="${esc(k)}">✨ Tambah logo / musik</button>
       <button class="btn ghost" type="button" data-vren="${esc(k)}">✏️ Judul</button>
       <button class="btn ghost" type="button" data-vdel="${esc(k)}">Hapus</button></div></div>`;
   }).join("");
@@ -1306,8 +1306,25 @@ $("vidList").addEventListener("click", e => {
     if (t !== v.title) { v.title = t; if (v.gid) v.metaDirty = true; persistVid(k); cloudSoon(1500); }
     render(); toast(`Judul diganti: "${t}".`); return;
   }
-  const lg = e.target.closest("[data-vlogo]");
-  if (lg) { addLogoIntro(lg.dataset.vlogo); return; }
+  const lg = e.target.closest("[data-vlogo]"), dg = e.target.closest("[data-vdeco]");
+  if (lg) { // panel pilihan: pembuka logo, musik, suara asli
+    const k = lg.dataset.vlogo, item = lg.closest(".viditem");
+    const old = item.querySelector(".vdeco"); if (old) { old.remove(); return; }
+    const box = document.createElement("div"); box.className = "vdeco";
+    box.innerHTML = `<label class="chk"><input type="checkbox" class="dLogo"${profil.logo ? " checked" : ""}> Pembuka animasi logo sekolah${profil.logo ? "" : " (logo belum diunggah — akan diminta)"}</label>
+      <label class="f">Musik latar<select class="dMusic"><option value="none">Tanpa musik</option><option value="semangat">🎵 Semangat</option><option value="tenang">🎵 Tenang</option><option value="megah">🎵 Megah</option>${musicFile ? `<option value="file">📁 ${esc(musicFile.name)}</option>` : ""}</select></label>
+      <label class="f">Suara asli video<select class="dOrig"><option value="keep">Tetap terdengar (musik pelan di belakang)</option><option value="mix">Sama keras dengan musik</option><option value="mute">Dimatikan (musik saja)</option></select></label>
+      <button class="btn primary" type="button" data-vdeco="${esc(k)}">🎬 Buat video baru</button>
+      <small>Video asli tetap disimpan. Lama proses = panjang video${profil.logo ? " + 9 detik logo" : ""}; layar harus tetap menyala.</small>`;
+    try { const mv = localStorage.getItem("kka-music"); if (mv && MUSIC_GEN.includes(mv)) box.querySelector(".dMusic").value = mv; } catch (er) {}
+    item.querySelector(".acts").after(box); return;
+  }
+  if (dg) {
+    const box = dg.closest(".vdeco"), music = box.querySelector(".dMusic").value, orig = box.querySelector(".dOrig").value;
+    const opt = { logo: box.querySelector(".dLogo").checked, music: MUSIC_GEN.includes(music) ? { kind: "gen", style: music } : music === "file" && musicFile ? { kind: "file", blob: musicFile.blob } : null, orig };
+    if (!opt.logo && !opt.music) return toast("Pilih pembuka logo atau musik dulu.");
+    addLogoIntro(dg.dataset.vdeco, opt); return;
+  }
   const sh = e.target.closest("[data-vshare]"), dl = e.target.closest("[data-vdl]"), del = e.target.closest("[data-vdel]");
   if (sh) {
     const k = sh.dataset.vshare, v = videos.get(k), polos = sh.dataset.ver === "polos" && v.plain;
@@ -1546,18 +1563,21 @@ renderLogo();
 
 /* Tambahkan pembuka logo ke video yang sudah ada (mis. video gabungan lama). Video asli tetap disimpan;
    hasilnya video baru "… (dengan logo)" dengan rasio (tegak/mendatar) yang sama seperti aslinya. */
-async function addLogoIntro(k) {
-  if (!profil.logo) { toast("Unggah logo sekolah dulu."); $("logoFile").value = ""; $("logoFile").click(); return; }
+async function addLogoIntro(k, opt = { logo: true }) {
+  if (opt.logo && !profil.logo) { toast("Unggah logo sekolah dulu, lalu ketuk Buat video baru lagi."); $("logoFile").value = ""; $("logoFile").click(); return; }
   if (!(await fetchVids([k], "Video siap. Menambahkan pembuka logo…"))) return;
   const v = videos.get(k); if (!v || !v.blob) return;
   const m = await videoMeta(v.blob), dur = (m && m.dur) || v.dur || 0;
   if (!dur) return toast("Durasi video tidak terbaca, pembuka logo tidak bisa ditambahkan.");
   const portrait = !!(m && m.h > m.w), school = profil.nama || "Sekolah";
-  const sc = [{ type: "logo", src: profil.logo, title: school, sub: `NPSN ${profil.npsn || "-"}${profil.wil ? "  ·  " + profil.wil : ""}`, sec: 9 },
-    { type: "clip", blob: v.blob, sec: dur, start: 0 }];
-  toast(`Membuat ulang video dengan pembuka logo (±${fmtDur(dur + 9)}). Biarkan layar menyala.`);
-  KKAVid.makeReport(sc, { portrait, onSaved: nv => saveVideo({ ...nv, title: `${(v.title || "Video").replace(/ \(dengan logo\)$/, "")} (dengan logo)`, report: true },
-    "Selesai. Video dengan pembuka logo tersimpan di atas daftar; video aslinya tetap ada."), onError: m2 => toast(m2) });
+  const sc = [...(opt.logo ? [{ type: "logo", src: profil.logo, title: school, sub: `NPSN ${profil.npsn || "-"}${profil.wil ? "  ·  " + profil.wil : ""}`, sec: 9 }] : []),
+    { type: "clip", blob: v.blob, sec: dur, start: 0, mute: opt.orig === "mute" }];
+  const music = opt.music ? { ...opt.music, duck: opt.orig === "mix" ? 0.75 : 0.3 } : null;
+  const tag = opt.logo && music ? "dengan logo & musik" : opt.logo ? "dengan logo" : "dengan musik";
+  const total = dur + (opt.logo ? 9 : 0);
+  toast(`Membuat video baru (${tag}, ±${fmtDur(total)}). Biarkan layar menyala.`);
+  KKAVid.makeReport(sc, { portrait, music, onSaved: nv => saveVideo({ ...nv, title: `${(v.title || "Video").replace(/ \(dengan (logo|musik|logo & musik)\)$/, "")} (${tag})`, report: true },
+    "Selesai. Video baru tersimpan di atas daftar; video aslinya tetap ada."), onError: m2 => toast(m2) });
 }
 
 /* ---------- Musik latar video ---------- */
