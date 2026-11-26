@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.28.0 · 27 Nov 2026";
+const APP_VERSION = "2.28.1 · 27 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1589,6 +1589,7 @@ async function addLogoIntro(k, opt = { logo: true }) {
    atau diisi sendiri. Waktu yang diisi sendiri ditandai "waktu input manual" di stamp, karena tidak
    bisa dibuktikan dari foto itu — agar dokumentasi tetap jujur bila diperiksa. */
 const upSel = {}; let upPickAk = null;
+const upRaw = () => $("upMode").value === "raw";
 const two2 = n => String(n).padStart(2, "0");
 function upDefaults() {
   const d = new Date();
@@ -1623,7 +1624,7 @@ function renderUpGrid() {
     const sel = upSel[a.k], old = photos.get(KEY(p.id, a.k, st));
     let info = "";
     if (sel) { const tm = upTimeFor(sel);
-      info = sel.stamped ? `<small class="w">Foto ini sudah ber-stamp — disimpan apa adanya (tanggal & keterangan tidak diubah).</small>`
+      info = upRaw() ? `<small>Disimpan tanpa stamp (foto asli).</small>` : sel.stamped ? `<small class="w">Foto ini sudah ber-stamp — disimpan apa adanya (tanggal & keterangan tidak diubah).</small>`
         : tm.t ? `<small${tm.manual ? ' class="w"' : ""}>${tgl(tm.t)} ${jam(tm.t)} · ${tm.manual ? "waktu input manual" : "waktu asli foto"}</small>` : `<small class="w">Isi tanggal & jam di atas.</small>`; }
     else if (old) info = `<small>Sudah ada foto (${tgl(old.t)} ${jam(old.t)}). Pilih foto baru untuk mengganti.</small>`;
     else info = `<small>${esc(a.d || "")}</small>`;
@@ -1633,12 +1634,15 @@ function renderUpGrid() {
   }).join("");
   const n = Object.keys(upSel).length;
   $("upSave").disabled = !n; $("upSave").textContent = n ? `Simpan ${n} foto ke ${p ? p.nama : "ruangan"}` : "Pilih foto dulu";
-  const anyManual = Object.values(upSel).some(x => !x.stamped && upTimeFor(x).manual);
-  $("upTmHint").textContent = anyManual
+  const raw = upRaw();
+  ["upKet", "upDate", "upTime", "upAsli"].forEach(id => ($(id).closest("label").hidden = raw));
+  const anyManual = !raw && Object.values(upSel).some(x => !x.stamped && upTimeFor(x).manual);
+  $("upTmHint").textContent = raw ? "Foto disimpan persis seperti aslinya, tanpa tulisan apa pun. Versi ber-stamp tidak dibuat."
+    : anyManual
     ? "Foto tanpa tanggal asli (mis. dari WhatsApp) atau yang jamnya diubah akan bertanda \"waktu input manual\" di stamp."
     : "Tanggal & jam di atas dipakai untuk foto yang tidak punya tanggal asli.";
 }
-["upSt", "upRoom"].forEach(id => $(id).addEventListener("change", renderUpGrid));
+["upSt", "upRoom", "upMode"].forEach(id => $(id).addEventListener("change", renderUpGrid));
 ["upDate", "upTime", "upAsli"].forEach(id => $(id).addEventListener("input", renderUpGrid));
 $("upAsli").addEventListener("change", renderUpGrid);
 $("upGrid").addEventListener("click", e => {
@@ -1660,7 +1664,8 @@ $("upFile").addEventListener("change", async e => {
 $("upSave").addEventListener("click", async () => {
   const { st, p } = upTarget(); if (!p) return;
   const ket = $("upKet").value.trim(), entries = Object.entries(upSel);
-  if (entries.some(([, s2]) => !s2.stamped && !upTimeFor(s2).t)) return toast("Isi tanggal & jam dulu.");
+  const raw = upRaw();
+  if (!raw && entries.some(([, s2]) => !s2.stamped && !upTimeFor(s2).t)) return toast("Isi tanggal & jam dulu.");
   $("upSave").disabled = true; let ok = 0;
   for (const [ak, sel] of entries) {
     const key = KEY(p.id, ak, st), a = angleOf(ak, st);
@@ -1669,11 +1674,11 @@ $("upSave").addEventListener("click", async () => {
       const img = await loadImage(sel.file), info = KKA.analyze(img), gps = galGps(sel.ex, false);
       const tm = upTimeFor(sel);
       let res;
-      if (sel.stamped) res = await rawRec(sel.file, sel.exifT || takenTime(sel.file), gps, img);
+      if (sel.stamped || raw) res = await rawRec(sel.file, sel.exifT || takenTime(sel.file), gps, img);
       else res = await stamp(img, tm.t, gps, ket ? { ...p, nama: `${p.nama} — ${ket}` } : p, a, { tag: stageTag(st) + (tm.manual ? " · WAKTU INPUT MANUAL" : "") });
       const old = photos.get(key); if (old) URL.revokeObjectURL(old.url);
       const prevPath = old ? (old.synced ? old.path : old.prevPath) || null : null;
-      photos.set(key, { ...res, hash: info.hash, warn: [], ket: !sel.stamped && ket ? ket : undefined, tm: !sel.stamped && tm.manual ? true : undefined,
+      photos.set(key, { ...res, hash: info.hash, warn: [], ket: !sel.stamped && !raw && ket ? ket : undefined, tm: !sel.stamped && !raw && tm.manual ? true : undefined,
         tOrig: sel.exifT || undefined, up: undefined, synced: false, gs: false, gid: old ? old.gid : undefined, gidP: old ? old.gidP : undefined,
         path: null, prevPath, url: URL.createObjectURL(res.blob) });
       persist(key); ok++;
