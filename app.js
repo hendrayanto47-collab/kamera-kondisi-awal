@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.29.1 · 28 Nov 2026";
+const APP_VERSION = "2.29.2 · 28 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -626,7 +626,7 @@ function renderPaket(st) {
   const anyPhoto = stageKeys(st).length > 0;
   $("tCount").textContent = cnt; $("tOf").hidden = false; $("tTotal").textContent = total; $("tUnit").textContent = `foto wajib ${pn(st)}%`;
   $("tBar").style.width = total ? (cnt / total) * 100 + "%" : "0";
-  $("zipBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto; $("galAllBtn").disabled = !anyPhoto; $("galPlainBtn").disabled = !anyPhoto; renderShareBtn();
+  $("zipBtn").disabled = !anyPhoto; $("zipPlainBtn").disabled = !anyPhoto; $("shareAllBtn").disabled = !anyPhoto; $("galAllBtn").disabled = !anyPhoto; $("galPlainBtn").disabled = !anyPhoto; renderShareBtn();
   const kurang = paket.filter(p => reqCount(p, st) < reqAngles(p, st).length).length;
   $("dockMsg").textContent = !profil.nama
     ? "Isi dulu nama sekolah dan NPSN, lalu ketuk kotak foto untuk membuka kamera."
@@ -664,7 +664,7 @@ function renderKeg() {
   }).join("")}</div></section>`).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
   $("tBar").style.width = keys.length ? "100%" : "0";
-  $("zipBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length; $("galAllBtn").disabled = !keys.length; $("galPlainBtn").disabled = !keys.length; renderShareBtn();
+  $("zipBtn").disabled = !keys.length; $("zipPlainBtn").disabled = !keys.length; $("shareAllBtn").disabled = !keys.length; $("galAllBtn").disabled = !keys.length; $("galPlainBtn").disabled = !keys.length; renderShareBtn();
   $("dockMsg").textContent = keys.length ? `${keys.length} foto kegiatan. Ketuk Unggah ke Drive untuk mengirim semuanya.`
     : "Foto kegiatan: rapat, pekerjaan berlangsung, material datang, serah terima.";
 }
@@ -2519,20 +2519,31 @@ function viewKeys() {
   for (const p of paket) for (const a of ALL_ANGLES) { const k = KEY(p.id, a.k, view); if (photos.has(k)) out.push(k); }
   return out;
 }
-$("zipBtn").onclick = async () => {
-  const rootName = screen === "kegiatan" ? `Foto Kegiatan - ${clean(profil.nama || "Sekolah")}`
-    : view === 0 ? `Foto Kondisi Awal - ${clean(profil.nama || "Sekolah")}` : `Foto Progres ${pn(view)}% - ${clean(profil.nama || "Sekolah")}`;
-  const entries = []; let first = Infinity;
+// plain: versi tanpa stamp (foto asli). Foto galeri yang disimpan apa adanya (raw) ikut sebagaimana aslinya.
+async function makeViewZip(plain) {
+  const rootName = (screen === "kegiatan" ? `Foto Kegiatan - ${clean(profil.nama || "Sekolah")}`
+    : view === 0 ? `Foto Kondisi Awal - ${clean(profil.nama || "Sekolah")}` : `Foto Progres ${pn(view)}% - ${clean(profil.nama || "Sekolah")}`) + (plain ? " (tanpa stamp)" : "");
+  const entries = []; let first = Infinity, miss = 0, asis = 0;
   for (const k of viewKeys()) {
     const ph = photos.get(k), q = parseKey(k);
+    let blob = ph.blob, name = fname(k);
+    if (plain) {
+      if (ph.raw) asis++;
+      else if (ph.orig) { blob = ph.orig; name = name.replace(/\.jpg$/, " - tanpa stamp.jpg"); }
+      else { miss++; continue; }
+    }
     first = Math.min(first, ph.t);
-    const sub = q.keg ? kegFolder(ph) + "/" : clean(paket.find(x => x.id === q.pid).nama) + "/";
-    entries.push({ path: `${rootName}/${sub}${fname(k)}`, blob: ph.blob, date: new Date(ph.t) });
+    const sub = q.keg ? kegFolder(ph) + kegSub(ph) + "/" : clean(paket.find(x => x.id === q.pid).nama) + "/";
+    entries.push({ path: `${rootName}/${sub}${name}`, blob, date: new Date(ph.t) });
   }
+  if (!entries.length) return toast("Foto-foto ini tidak punya versi tanpa stamp.");
   toast("Menyusun ZIP…");
   const blob = await window.makeZip(entries);
   download(`${rootName} - ${tgl(first)}.zip`, blob);
-};
+  if (plain && (miss || asis)) setTimeout(() => toast(`${entries.length} foto di ZIP.${miss ? ` ${miss} dilewati (tidak punya versi tanpa stamp).` : ""}${asis ? ` ${asis} foto galeri disertakan apa adanya.` : ""}`), 1800);
+}
+$("zipBtn").onclick = () => makeViewZip(false);
+$("zipPlainBtn").onclick = () => makeViewZip(true);
 
 // ---------- Unggah ke Drive (menu Bagikan bawaan HP) ----------
 /* Membuka menu Bagikan iPhone/Android berisi foto-foto ini. Pilih "Drive", lalu pilih folder tujuan.

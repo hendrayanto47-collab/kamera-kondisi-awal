@@ -288,8 +288,9 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .sum-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .sumcard .eyebrow{margin:0 0 2px}
 .sumcard .tally b{font-size:26px}
-.sum-btns{display:flex;gap:8px}
-.sum-btns .btn{padding:10px 14px}
+.sum-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1 1 100%}
+.sum-btns .btn{padding:10px 12px}
+.sum-btns #shareAllBtn{grid-column:1/-1;order:-1}
 .sumcard .meter{width:100%;height:8px;margin:0}
 .sum-msg{margin:0;font-size:13px;color:var(--muted)}
 
