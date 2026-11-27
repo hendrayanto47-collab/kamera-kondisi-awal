@@ -158,13 +158,11 @@
   <section class="screen" id="scrUp" hidden>
     <section class="card-s" aria-labelledby="hUp">
       <h2 id="hUp">Unggah foto dari galeri</h2>
-      <p class="hint">Satu ruangan sekaligus: <b>Tampak Depan, Samping, Belakang, Dalam</b>. Atur tahap, ruangan, keterangan, tanggal & jam stamp, pilih fotonya, lalu simpan.</p>
-      <div class="row2">
-        <label class="f">Tahap<select id="upSt"></select></label>
-        <label class="f">Ruangan<select id="upRoom"></select></label>
-      </div>
+      <p class="hint">Satu ruangan sekaligus: <b>Tampak Depan, Samping, Belakang, Dalam</b>. Foto dikelompokkan menurut <b>keterangan</b> (tampil juga di menu Kegiatan, Drive: Kegiatan/keterangan/ruangan).</p>
       <label class="f">Stamp<select id="upMode"><option value="stamp">Pakai stamp (lokasi, tanggal, keterangan)</option><option value="raw">Tanpa stamp — foto asli apa adanya</option></select></label>
-      <label class="f">Keterangan kegiatan (tercetak di stamp)<input type="text" id="upKet" placeholder="mis. Pemasangan rangka atap" autocomplete="off"></label>
+      <label class="f">Keterangan (nama kelompok & tercetak di stamp)<input type="text" id="upKet" list="upKetList" placeholder="mis. Pemasangan rangka atap" autocomplete="off"></label>
+      <datalist id="upKetList"></datalist>
+      <label class="f">Ruangan<select id="upRoom"></select></label>
       <div class="row2">
         <label class="f">Tanggal<input type="date" id="upDate"></label>
         <label class="f">Jam<input type="time" id="upTime"></label>

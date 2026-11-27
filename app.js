@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.28.1 · 27 Nov 2026";
+const APP_VERSION = "2.29.0 · 27 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -114,7 +114,7 @@ function persistVid(k) {
   const v = videos.get(k); if (!v) return dbPut(k, null);
   dbPut(k, { blob: v.blob, plain: v.plain, nostamp: v.nostamp, upPlain: v.upPlain, gid: v.gid, gidP: v.gidP, gs: v.gs, shot: v.shot, native: v.native, gal: v.gal, remote: v.remote, size: v.size, sizeP: v.sizeP, hasPlain: v.hasPlain, skip: v.skip, mix: v.mix, ord: v.ord, fromGal: v.fromGal, report: v.report, metaDirty: v.metaDirty, fixed: v.fixed, reup: v.reup, t: v.t, dur: v.dur, title: v.title, mime: v.mime, ext: v.ext, up: v.up, room: v.room, st: v.st, kind: "video" });
 }
-const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal", "raw", "gidP", "galP", "ket", "tm", "tOrig"];
+const REC_FIELDS = ["blob", "orig", "t", "lat", "lng", "acc", "hash", "warn", "cap", "up", "sv", "synced", "path", "prevPath", "gid", "gmod", "gs", "gpath", "away", "gal", "raw", "gidP", "galP", "ket", "tm", "tOrig", "room", "ak"];
 function persist(k) {
   const ph = photos.get(k); if (!ph) return dbPut(k, null);
   const rec = {}; REC_FIELDS.forEach(f => (rec[f] = ph[f])); dbPut(k, rec);
@@ -637,6 +637,10 @@ function renderPaket(st) {
 
 /* Foto kegiatan dikelompokkan per judul (mis. "H2 pembongkaran"): satu folder per judul di Drive & ZIP */
 const kegFolder = ph => clean((ph.cap || "").trim() || "Tanpa judul");
+// Foto dari menu Unggah: foto kegiatan yang juga punya ruangan & sudut → subfolder per ruangan
+const roomName = id => (paket.find(p => p.id === id) || {}).nama || "";
+const kegSub = ph => (ph.room && roomName(ph.room) ? "/" + clean(roomName(ph.room)) : "");
+const kegAngle = ph => (ph.ak ? (PROG_ANGLES.find(a => a.k === ph.ak) || angleOf(ph.ak, 25) || {}).l || "" : "");
 function kegGroups(keys) {
   const g = new Map();
   for (const k of keys) { const ph = photos.get(k), f = kegFolder(ph); if (!g.has(f)) g.set(f, []); g.get(f).push(k); }
@@ -656,7 +660,7 @@ function renderKeg() {
     const ph = photos.get(k);
     return `<figure class="kegitem"><button type="button" class="shot has" data-view-k="${esc(k)}" aria-label="Lihat ${esc(ph.cap || "foto kegiatan")}">
       <img src="${ph.url}" alt="">${ph.bad ? '<span class="badph">Foto rusak — hapus lalu impor ulang</span>' : ""}${ph.up || ph.gs ? '<span class="sync ok">✓ Drive</span>' : ""}${ph.gal ? '<span class="galmark">📥 Galeri</span>' : ""}${ph && ph.orig && !ph.raw ? `<span class="v2mark" title="Tersimpan dengan stamp dan tanpa stamp">2 versi</span>` : ""}</button>
-      <figcaption><small>${tgl(ph.t)} ${jam(ph.t)}${ph.away ? " · 📍 luar sekolah" : ""}</small></figcaption></figure>`;
+      <figcaption>${ph.room ? `<b class="kroom">${esc(roomName(ph.room))} · ${esc(kegAngle(ph))}</b>` : ""}<small>${tgl(ph.t)} ${jam(ph.t)}${ph.away ? " · 📍 luar sekolah" : ""}</small></figcaption></figure>`;
   }).join("")}</div></section>`).join("") : `<p class="hint">Belum ada foto kegiatan. Pilih atau ketik keterangan di atas, lalu ketuk <b>Ambil foto kegiatan</b>.</p>`;
   $("tCount").textContent = keys.length; $("tOf").hidden = true; $("tUnit").textContent = "foto kegiatan";
   $("tBar").style.width = keys.length ? "100%" : "0";
@@ -1584,10 +1588,11 @@ async function addLogoIntro(k, opt = { logo: true }) {
 }
 
 /* ---------- Unggah foto galeri per ruangan (menu "Unggah") ----------
-   Satu ruangan sekaligus: sudut wajib tahap itu (0%: depan, serong kanan, serong kiri, belakang;
-   progres: depan, samping, belakang, dalam). Tanggal & jam stamp: asli dari data foto bila ada,
-   atau diisi sendiri. Waktu yang diisi sendiri ditandai "waktu input manual" di stamp, karena tidak
-   bisa dibuktikan dari foto itu — agar dokumentasi tetap jujur bila diperiksa. */
+   Tanpa tahap persen: foto dikelompokkan menurut KETERANGAN (seperti judul kegiatan), lalu per ruangan
+   dengan 4 sudut: depan, samping, belakang, dalam. Tersimpan sebagai foto kegiatan (ikut daftar Kegiatan,
+   Drive "Kegiatan/<keterangan>/<ruangan>", versi tanpa stamp, video).
+   Tanggal & jam stamp: asli dari data foto bila ada, atau diisi sendiri — yang diisi sendiri ditandai
+   "waktu input manual" di stamp karena tidak bisa dibuktikan dari foto itu. */
 const upSel = {}; let upPickAk = null;
 const upRaw = () => $("upMode").value === "raw";
 const two2 = n => String(n).padStart(2, "0");
@@ -1596,10 +1601,9 @@ function upDefaults() {
   if (!$("upDate").value) $("upDate").value = `${d.getFullYear()}-${two2(d.getMonth() + 1)}-${two2(d.getDate())}`;
   if (!$("upTime").value) $("upTime").value = `${two2(d.getHours())}:${two2(d.getMinutes())}`;
 }
-function upTarget() {
-  const st = +$("upSt").value || 0, p = paket.find(x => x.id === $("upRoom").value);
-  return { st, p, angles: p ? reqAngles(p, st) : [] };
-}
+const upKetV = () => $("upKet").value.trim().replace(/\s+/g, " ");
+const upExisting = (ket, pid, ak) => kegKeys().find(k => { const ph = photos.get(k); return ph.room === pid && ph.ak === ak && kegFolder(ph) === clean(ket || "Tanpa judul"); });
+function upTarget() { const p = paket.find(x => x.id === $("upRoom").value); return { p, angles: PROG_ANGLES }; }
 const upManualT = () => { const [y, m, d] = ($("upDate").value || "").split("-").map(Number), [hh, mm] = ($("upTime").value || "").split(":").map(Number);
   return y && m && d ? new Date(y, m - 1, d, hh || 0, mm || 0).getTime() : null; };
 function upTimeFor(sel) { // { t, manual }
@@ -1609,19 +1613,17 @@ function upTimeFor(sel) { // { t, manual }
 }
 function renderUp() {
   upDefaults();
-  const stSel = $("upSt"), prevSt = stSel.value;
-  stSel.innerHTML = STAGES.map(st => `<option value="${st}">${esc(stageName(st))}</option>`).join("");
-  stSel.value = STAGES.map(String).includes(prevSt) ? prevSt : String(view || 0);
   const rSel = $("upRoom"), prevR = rSel.value;
   rSel.innerHTML = paket.map(p => `<option value="${esc(p.id)}">${esc(p.nama)}</option>`).join("");
   if (paket.some(p => p.id === prevR)) rSel.value = prevR;
+  // saran keterangan: keterangan unggahan & judul kegiatan yang sudah ada
+  $("upKetList").innerHTML = [...new Set(kegKeys().map(k => photos.get(k).cap).filter(Boolean))].slice(0, 40).map(c => `<option value="${esc(c)}">`).join("");
   renderUpGrid();
 }
 function renderUpGrid() {
-  const { st, p, angles } = upTarget();
-  for (const ak of Object.keys(upSel)) if (!angles.some(a => a.k === ak)) { URL.revokeObjectURL(upSel[ak].url); delete upSel[ak]; }
+  const { p, angles } = upTarget(), ket = upKetV();
   $("upGrid").innerHTML = !p ? `<p class="hint">Belum ada ruangan. Tambahkan ruangan di menu Foto.</p>` : angles.map(a => {
-    const sel = upSel[a.k], old = photos.get(KEY(p.id, a.k, st));
+    const sel = upSel[a.k], oldK = ket && upExisting(ket, p.id, a.k), old = oldK && photos.get(oldK);
     let info = "";
     if (sel) { const tm = upTimeFor(sel);
       info = upRaw() ? `<small>Disimpan tanpa stamp (foto asli).</small>` : sel.stamped ? `<small class="w">Foto ini sudah ber-stamp — disimpan apa adanya (tanggal & keterangan tidak diubah).</small>`
@@ -1633,17 +1635,16 @@ function renderUpGrid() {
       <div class="acts"><button class="btn" type="button" data-uppick="${a.k}">${sel ? "Ganti" : "Pilih foto"}</button>${sel ? `<button class="btn ghost" type="button" data-updrop="${a.k}">Batal</button>` : ""}</div></div>`;
   }).join("");
   const n = Object.keys(upSel).length;
-  $("upSave").disabled = !n; $("upSave").textContent = n ? `Simpan ${n} foto ke ${p ? p.nama : "ruangan"}` : "Pilih foto dulu";
+  $("upSave").disabled = !n; $("upSave").textContent = !n ? "Pilih foto dulu" : !ket ? "Isi keterangan dulu" : `Simpan ${n} foto · ${ket} · ${p ? p.nama : ""}`;
   const raw = upRaw();
-  ["upKet", "upDate", "upTime", "upAsli"].forEach(id => ($(id).closest("label").hidden = raw));
+  ["upDate", "upTime", "upAsli"].forEach(id => ($(id).closest("label").hidden = raw));
   const anyManual = !raw && Object.values(upSel).some(x => !x.stamped && upTimeFor(x).manual);
   $("upTmHint").textContent = raw ? "Foto disimpan persis seperti aslinya, tanpa tulisan apa pun. Versi ber-stamp tidak dibuat."
-    : anyManual
-    ? "Foto tanpa tanggal asli (mis. dari WhatsApp) atau yang jamnya diubah akan bertanda \"waktu input manual\" di stamp."
+    : anyManual ? "Foto tanpa tanggal asli (mis. dari WhatsApp) atau yang jamnya diubah akan bertanda \"waktu input manual\" di stamp."
     : "Tanggal & jam di atas dipakai untuk foto yang tidak punya tanggal asli.";
 }
-["upSt", "upRoom", "upMode"].forEach(id => $(id).addEventListener("change", renderUpGrid));
-["upDate", "upTime", "upAsli"].forEach(id => $(id).addEventListener("input", renderUpGrid));
+["upRoom", "upMode"].forEach(id => $(id).addEventListener("change", renderUpGrid));
+["upDate", "upTime", "upAsli", "upKet"].forEach(id => $(id).addEventListener("input", renderUpGrid));
 $("upAsli").addEventListener("change", renderUpGrid);
 $("upGrid").addEventListener("click", e => {
   const pk = e.target.closest("[data-uppick]"), dr = e.target.closest("[data-updrop]");
@@ -1662,31 +1663,32 @@ $("upFile").addEventListener("change", async e => {
   } catch (er) { toast("Foto tidak bisa dibaca. Pilih JPG/PNG."); }
 });
 $("upSave").addEventListener("click", async () => {
-  const { st, p } = upTarget(); if (!p) return;
-  const ket = $("upKet").value.trim(), entries = Object.entries(upSel);
-  const raw = upRaw();
+  const { p } = upTarget(); if (!p) return;
+  const ket = upKetV(), entries = Object.entries(upSel), raw = upRaw();
+  if (!ket) { $("upKet").focus(); return toast("Isi keterangan dulu — foto dikelompokkan menurut keterangan."); }
   if (!raw && entries.some(([, s2]) => !s2.stamped && !upTimeFor(s2).t)) return toast("Isi tanggal & jam dulu.");
   $("upSave").disabled = true; let ok = 0;
-  for (const [ak, sel] of entries) {
-    const key = KEY(p.id, ak, st), a = angleOf(ak, st);
-    toast(`Menyimpan ${a.l} (${ok + 1}/${entries.length})…`);
+  for (const [i, [ak, sel]] of entries.entries()) {
+    const al = (PROG_ANGLES.find(a => a.k === ak) || {}).l || ak;
+    toast(`Menyimpan ${al} (${ok + 1}/${entries.length})…`);
     try {
-      const img = await loadImage(sel.file), info = KKA.analyze(img), gps = galGps(sel.ex, false);
-      const tm = upTimeFor(sel);
+      const oldK = upExisting(ket, p.id, ak), key = oldK || "#keg|" + Date.now().toString(36) + "u" + i;
+      const img = await loadImage(sel.file), info = KKA.analyze(img), gps = galGps(sel.ex, false), tm = upTimeFor(sel);
+      const old = photos.get(key);
+      // isi sementara agar stampCtx tahu ruangan, sudut, dan tanda waktu manual
+      const meta = { cap: ket, room: p.id, ak, tm: !sel.stamped && !raw && tm.manual ? true : undefined, tOrig: sel.exifT || undefined };
       let res;
       if (sel.stamped || raw) res = await rawRec(sel.file, sel.exifT || takenTime(sel.file), gps, img);
-      else res = await stamp(img, tm.t, gps, ket ? { ...p, nama: `${p.nama} — ${ket}` } : p, a, { tag: stageTag(st) + (tm.manual ? " · WAKTU INPUT MANUAL" : "") });
-      const old = photos.get(key); if (old) URL.revokeObjectURL(old.url);
-      const prevPath = old ? (old.synced ? old.path : old.prevPath) || null : null;
-      photos.set(key, { ...res, hash: info.hash, warn: [], ket: !sel.stamped && !raw && ket ? ket : undefined, tm: !sel.stamped && !raw && tm.manual ? true : undefined,
-        tOrig: sel.exifT || undefined, up: undefined, synced: false, gs: false, gid: old ? old.gid : undefined, gidP: old ? old.gidP : undefined,
-        path: null, prevPath, url: URL.createObjectURL(res.blob) });
+      else { photos.set(key, { ...(old || {}), ...meta }); const c = stampCtx(key, ket, false); if (old) photos.set(key, old); else photos.delete(key);
+        res = await stamp(img, tm.t, gps, c.p, c.a, c.opts); }
+      if (old) URL.revokeObjectURL(old.url);
+      photos.set(key, { ...res, ...meta, hash: info.hash, warn: [], up: undefined, synced: false, gs: false, gid: old ? old.gid : undefined, gidP: old ? old.gidP : undefined, url: URL.createObjectURL(res.blob) });
       persist(key); ok++;
       URL.revokeObjectURL(sel.url); delete upSel[ak];
-    } catch (er) { toast(`${a.l} gagal disimpan.`); }
+    } catch (er) { toast(`${al} gagal disimpan.`); }
   }
   render(); cloudSoon(1500);
-  toast(`${ok} foto tersimpan di ${p.nama} · ${stageName(st)}. Lihat di menu Foto.`);
+  toast(`${ok} foto tersimpan: "${ket}" · ${p.nama}. Lihat juga di menu Kegiatan.`);
 });
 
 /* ---------- Musik latar video ---------- */
@@ -1955,7 +1957,9 @@ async function stampInner(img, takenAt, gps, p, a, opts = {}) {
 function stampCtx(k, cap, away) {
   const q = parseKey(k);
   if (away === undefined) away = !!(photos.get(k) || {}).away;
-  if (q.keg) return { p: { nama: cap || "Kegiatan" }, a: { l: "Kegiatan", k: "keg" }, opts: { title: `KEGIATAN — ${(cap || "").toUpperCase()}`, tag: "DOKUMENTASI KEGIATAN", away } };
+  if (q.keg) { const ph = photos.get(k) || {}, rm = ph.room && roomName(ph.room);
+    return { p: { nama: cap || "Kegiatan" }, a: { l: "Kegiatan", k: "keg" }, opts: { title: rm ? `${kegAngle(ph)} — ${rm} — ${cap || ""}`.toUpperCase() : `KEGIATAN — ${(cap || "").toUpperCase()}`,
+      tag: "DOKUMENTASI KEGIATAN" + (ph.tm ? " · WAKTU INPUT MANUAL" : ""), away } }; }
   const ph = photos.get(k) || {}, p0 = paket.find(x => x.id === q.pid);
   return { p: ph.ket && p0 ? { ...p0, nama: `${p0.nama} — ${ph.ket}` } : p0, a: angleOf(q.ak, q.st), opts: { tag: stageTag(q.st) + (ph.tm ? " · WAKTU INPUT MANUAL" : "") } };
 }
@@ -2384,7 +2388,7 @@ $("rCancel").addEventListener("click", closeReview);
 /* Contoh: 2026-11-03 09.12 - Kelas 1 - Tampak Depan.jpg */
 function fname(k) {
   const q = parseKey(k), ph = photos.get(k);
-  if (q.keg) return `${tgl(ph.t)} ${jam(ph.t)}.${two(new Date(ph.t).getSeconds())} - Kegiatan - ${clean(ph.cap || "Kegiatan")}.jpg`;
+  if (q.keg) return `${tgl(ph.t)} ${jam(ph.t)}.${two(new Date(ph.t).getSeconds())} - ${ph.room ? "" : "Kegiatan - "}${clean(ph.cap || "Kegiatan")}${ph.room ? ` - ${clean(roomName(ph.room))} - ${kegAngle(ph)}` : ""}.jpg`;
   const p = paket.find(x => x.id === q.pid), a = angleOf(q.ak, q.st);
   return `${tgl(ph.t)} ${jam(ph.t)} - ${clean(p.nama)} - ${a.l}${q.st ? " - " + pn(q.st) + "%" : ""}.jpg`;
 }
@@ -2689,7 +2693,7 @@ async function cloudSync(manual) {
         const blob = await GD.download(f.id);
         if (loc && loc.url) URL.revokeObjectURL(loc.url);
         photos.set(k, { blob, t: +a.t || Date.now(), lat: numOr(a.lat), lng: numOr(a.lng), acc: numOr(a.acc), sv: a.sv || undefined, cap: a.cap || undefined,
-          gid: f.id, gmod: f.modifiedTime, gs: true, gpath: a.gp || undefined, away: a.aw === "1" || undefined, raw: a.raw === "1" || undefined, url: URL.createObjectURL(blob) });
+          gid: f.id, gmod: f.modifiedTime, gs: true, gpath: a.gp || undefined, away: a.aw === "1" || undefined, raw: a.raw === "1" || undefined, room: a.room || undefined, ak: a.ak || undefined, url: URL.createObjectURL(blob) });
         persist(k); down++; paint();
       } else if (a.kind === "video") {
         const loc = videos.get(k);
@@ -2750,8 +2754,8 @@ async function cloudSync(manual) {
       jobs.push({ rank: v.room ? 0 : 2, run: () => upVideo(k, v) });
     }
     for (const [k, ph] of [...photos]) {
-      if (ph.gs && ph.gid && k.startsWith("#keg|") && ph.gpath !== `Kegiatan/${kegFolder(ph)}`) { // pindahkan ke folder judulnya
-        jobs.push({ rank: 1, run: async () => { const path = `Kegiatan/${kegFolder(ph)}`;
+      if (ph.gs && ph.gid && k.startsWith("#keg|") && ph.gpath !== `Kegiatan/${kegFolder(ph)}${kegSub(ph)}`) { // pindahkan ke folder judulnya
+        jobs.push({ rank: 1, run: async () => { const path = `Kegiatan/${kegFolder(ph)}${kegSub(ph)}`;
           try { const mv = await GD.move(ph.gid, await F(path)); if (mv && mv.modifiedTime) ph.gmod = mv.modifiedTime; } catch (e) { if (e.status !== 404) throw e; }
           if (ph.gidP || ph.orig) await upPlain(k, ph);
           ph.gpath = path; persist(k); } });
@@ -2766,8 +2770,8 @@ async function cloudSync(manual) {
     const tick = () => { cloudProg = `Mengirim ke Drive… ${up}/${total}`; renderCloud(); };
     async function upPhoto(k, ph) {
       const q = parseKey(k);
-      const path = q.keg ? `Kegiatan/${kegFolder(ph)}` : `FOTO_REVITSD_${pn(q.st)}/${clean(paket.find(p => p.id === q.pid).nama)}`;
-      const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90), gp: path.slice(0, 100), aw: ph.away ? "1" : "", raw: ph.raw ? "1" : "" };
+      const path = q.keg ? `Kegiatan/${kegFolder(ph)}${kegSub(ph)}` : `FOTO_REVITSD_${pn(q.st)}/${clean(paket.find(p => p.id === q.pid).nama)}`;
+      const props = { kka: "file", npsn, kind: "photo", k, t: sv(ph.t), lat: sv(ph.lat), lng: sv(ph.lng), acc: sv(ph.acc), sv: sv(ph.sv), cap: sv(ph.cap).slice(0, 90), gp: path.slice(0, 100), aw: ph.away ? "1" : "", raw: ph.raw ? "1" : "", room: sv(ph.room), ak: sv(ph.ak) };
       const meta = { name: fname(k), appProperties: props };
       let r = null;
       if (ph.gid) {
@@ -2785,7 +2789,7 @@ async function cloudSync(manual) {
     }
     /* Versi tanpa stamp ikut dikirim agar aman dan bisa diunduh dari HP lain:
        foto persen → "FOTO_REVITSD_<persen> (tanpa stamp)/<ruang>", foto kegiatan → "Kegiatan (tanpa stamp)/<judul>" */
-    const plainPath = (k, ph) => { const q = parseKey(k); if (q.keg) return `Kegiatan (tanpa stamp)/${kegFolder(ph)}`;
+    const plainPath = (k, ph) => { const q = parseKey(k); if (q.keg) return `Kegiatan (tanpa stamp)/${kegFolder(ph)}${kegSub(ph)}`;
       const p = paket.find(x => x.id === q.pid); return p ? `FOTO_REVITSD_${pn(q.st)} (tanpa stamp)/${clean(p.nama)}` : null; };
     async function upPlain(k, ph, props, content) {
       if (!ph.orig || ph.raw) return;
