@@ -451,3 +451,5 @@ body{padding-top:0;-webkit-tap-highlight-color:transparent}
 .upslot .acts{display:flex;gap:6px;flex-wrap:wrap}
 .upslot .acts .btn{padding:8px 10px;font-size:13px}
 .kegitem figcaption .kroom{display:block;font-size:12px;line-height:1.3}
+.rvnew{display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 10px}
+.rvnew input{flex:1 1 180px;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);font:inherit;background:var(--surface);color:inherit}

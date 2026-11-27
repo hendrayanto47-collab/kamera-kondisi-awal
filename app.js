@@ -2,7 +2,7 @@
    Semua data (identitas, daftar paket, foto) disimpan di HP itu sendiri:
    identitas & paket di localStorage, foto di IndexedDB. */
 
-const APP_VERSION = "2.29.0 · 27 Nov 2026";
+const APP_VERSION = "2.29.1 · 28 Nov 2026";
 
 // ---------- Data dasar ----------
 /* 4 foto WAJIB bangunan, sesuai "Form Unggah Dokumentasi 0%" (contoh foto Bangunan):
@@ -1019,7 +1019,7 @@ const rvName = (p, i, v, ver) => { const sh = shotOf(p, v);
   return `${two(i + 1)} - ${clean(p.nama)}${sh ? " - " + clean(sh.t) : ""}${ver === "polos" && v.plain ? " - polos" : ""}.${v.ext || "mp4"}`; };
 function renderRoomVid() {
   const st = rvSt();
-  $("rvStage").innerHTML = STAGES.map(x => `<option value="${x}">${esc(stageName(x))}</option>`).join("");
+  $("rvStage").innerHTML = STAGES.map(x => `<option value="${x}">${esc(stageName(x))}</option>`).join("") + `<option value="__new">＋ Tahap baru (ketik persen)…</option>`;
   $("rvStage").value = String(st);
   $("rvFolder").textContent = rvFolder(st);
   let done = 0;
@@ -1040,7 +1040,22 @@ function renderRoomVid() {
   }).join("");
   $("rvSum").textContent = `${done}/${paket.length} ruangan lengkap (min. ${RV_MIN} video @ ${RV_MIN_SEC}–${RV_MAX_SEC} detik)`;
 }
-$("rvStage").addEventListener("change", e => { rvStage = +e.target.value; try { localStorage.setItem("kka-rvstage", rvStage); } catch (er) {} renderRoomVid(); });
+$("rvStage").addEventListener("change", e => {
+  if (e.target.value === "__new") { e.target.value = String(rvSt()); $("rvNewBox").hidden = false; $("rvNewIn").value = ""; $("rvNewIn").focus(); return; }
+  rvStage = +e.target.value; try { localStorage.setItem("kka-rvstage", rvStage); } catch (er) {} renderRoomVid();
+});
+// Tahap baru untuk video (sama dengan tahap di menu Foto, mis. 37 atau 3,25)
+function rvAddStage() {
+  const n = parsePct($("rvNewIn").value);
+  if (!Number.isFinite(n) || n <= 0 || n > 100) { toast("Isi angka persen lebih dari 0 sampai 100, boleh pakai koma (mis. 3,25)."); $("rvNewIn").focus(); return; }
+  if (!STAGES.includes(n)) { STAGES = [...STAGES, n].sort((a, b) => a - b); saveStages(); saveState(); cloudSoon(1500); }
+  rvStage = n; try { localStorage.setItem("kka-rvstage", n); } catch (er) {}
+  $("rvNewBox").hidden = true; renderStageEd(); renderRoomVid();
+  toast(`Tahap ${pn(n)}% dipilih. Folder Drive: VIDEO_REVITSD_${pn(n)}. Tahap ini juga muncul di menu Foto.`);
+}
+$("rvNewOk").addEventListener("click", rvAddStage);
+$("rvNewCancel").addEventListener("click", () => { $("rvNewBox").hidden = true; });
+$("rvNewIn").addEventListener("keydown", e => { if (e.key === "Enter") rvAddStage(); });
 /* ---------- Rekam dengan aplikasi Kamera bawaan HP ----------
    <input capture> membuka kamera asli iPhone/Android (stabilisasi & kualitas penuh). Hasilnya video ASLI tanpa cap.
    Arahan sudut ditampilkan dulu di kartu ruangan; setelah merekam, durasi (5–10 dtk) dan orientasi (landscape) diperiksa. */
